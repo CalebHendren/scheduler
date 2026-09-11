@@ -18,7 +18,8 @@ and post — with a QR code to tutor.com for the hours nobody is on shift.
 
 1. Open the site (or the single-file version) in any modern browser.
 2. Click **Load sample roster** to see how it works, or **Add tutor** to start your own.
-   The sample is ten tutors approved for 80 hours between them.
+   The sample is ten tutors approved for 80 hours between them, none of them starting
+   before 9:00 AM.
 3. For each tutor: first and last name, the class checkboxes, their approved weekly hours
    (15 by default), and their availability.
 4. Fill the week in whichever way suits you — see [Three ways to place a
@@ -46,6 +47,16 @@ Auto-optimize is one option, not the only one. Nothing here needs it.
 - **The whole week at once.** **Auto-optimize** rebuilds the entire schedule from scratch.
   Locked shifts survive it; everything else is fair game, so it is the wrong button to press
   once people have been told what they are working.
+
+## Undoing
+
+**Ctrl+Z** (**Cmd+Z** on a Mac) undoes the last change, and **Ctrl+Shift+Z** or **Ctrl+Y**
+redoes it. The **Undo** button in the toolbar does the same thing and greys out when there is
+nothing left to undo. Everything is undoable — a dragged shift, a deleted tutor, an
+auto-optimize, a CSV import, even **Start over** — up to sixty steps back. Inside a text box the
+shortcut is left alone, so it still undoes your typing.
+
+History lives in the tab and is not saved, so it starts empty each visit.
 
 ## Locking
 

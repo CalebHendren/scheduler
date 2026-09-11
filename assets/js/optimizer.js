@@ -792,13 +792,16 @@
     }
 
     if (!anyAvailable) return 'unavailable';
-    if (budgetSpent) return 'budget';
     if (!anyWithHours) return 'capped';
+    // Whether a legal shift exists at all is checked before the budget: a hole
+    // no shift can reach is not a money problem, and blaming the budget sends
+    // the coordinator to raise a number that would change nothing.
+    if (!anyPlaceable) return 'rest';
+    if (budgetSpent) return 'budget';
     // Somebody can legally work here, so the hole is simply unscheduled --
     // saying "break rules" here would send the coordinator chasing a
     // constraint that is not actually binding.
-    if (anyPlaceable) return 'unscheduled';
-    return 'rest';
+    return 'unscheduled';
   }
 
   var GAP_REASONS = {

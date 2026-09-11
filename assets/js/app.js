@@ -110,6 +110,36 @@
     }).join('');
   }
 
+  // What the undo notice calls each kind of change.
+  var CHANGE_LABELS = {
+    'add-tutor': 'adding a tutor', 'edit-tutor': 'editing a tutor',
+    'remove-tutor': 'removing a tutor', 'add-shift': 'adding a shift',
+    'move': 'moving a shift', 'remove': 'removing a shift',
+    'lock': 'locking a shift', 'lock-tutor': 'locking a tutor’s shifts',
+    'lock-all': 'locking every shift', 'fit-tutor': 'auto-fitting a tutor',
+    optimize: 'auto-optimizing', clear: 'clearing the schedule',
+    sample: 'loading the sample roster', reset: 'starting over',
+    settings: 'a settings change', 'import-csv': 'a CSV import',
+    'import': 'an import', replace: 'loading a file', theme: 'a theme change'
+  };
+
+  function renderUndo() {
+    var btn = $('btn-undo');
+    btn.disabled = !TS.store.canUndo();
+  }
+
+  function undoChange() {
+    var reason = TS.store.undo();
+    if (!reason) { notice('There is nothing left to undo.', 'info'); return; }
+    notice('Undid ' + (CHANGE_LABELS[reason] || 'the last change') + '.', 'info');
+  }
+
+  function redoChange() {
+    var reason = TS.store.redo();
+    if (!reason) return;
+    notice('Redid ' + (CHANGE_LABELS[reason] || 'the last change') + '.', 'info');
+  }
+
   function renderLockAll(state) {
     var btn = $('btn-lock-all');
     var shifts = state.assignments;
@@ -148,6 +178,7 @@
     TS.calendar.render($('calendar'), state, { selectedTutorId: selectedTutorId });
     renderCalendarHint(state);
     renderLockAll(state);
+    renderUndo();
     renderStats(state);
     renderGaps(state);
     TS.printview.render($('print-view'), state);
@@ -555,6 +586,7 @@
     $('btn-cancel').addEventListener('click', cancelOptimize);
     $('btn-add-tutor').addEventListener('click', addTutor);
     $('btn-lock-all').addEventListener('click', lockEverything);
+    $('btn-undo').addEventListener('click', undoChange);
 
     $('btn-clear').addEventListener('click', function () {
       var kept = TS.store.state.assignments.filter(function (a) { return a.locked; });
@@ -621,6 +653,23 @@
       onNotice: notice,
       onCreate: createFromDrag,
       getSelectedTutorId: function () { return selectedTutorId; }
+    });
+
+    // Ctrl+Z anywhere but a text field, where the browser's own undo belongs.
+    doc.addEventListener('keydown', function (e) {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      var key = String(e.key).toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+
+      var el = e.target;
+      var tag = el && el.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' ||
+          (el && el.isContentEditable)) return;
+      if (doc.getElementById('dialog-root').firstChild) return;
+
+      e.preventDefault();
+      if (key === 'y' || e.shiftKey) redoChange();
+      else undoChange();
     });
 
     doc.addEventListener('keydown', function (e) {
