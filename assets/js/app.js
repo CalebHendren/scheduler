@@ -67,10 +67,17 @@
     $('app-title').textContent = s.title;
     doc.title = s.title + ' — Chattanooga State';
     $('header-location').textContent = s.location;
-    $('header-contact').textContent = s.contactName;
-    var mail = $('header-email');
-    mail.textContent = s.contactEmail;
-    mail.href = 'mailto:' + s.contactEmail;
+
+    // Contact details start empty and are filled in under Schedule settings,
+    // so every piece of the line is optional, separator included.
+    var parts = [];
+    if (s.contactName) parts.push(esc(s.contactName));
+    if (s.contactEmail) {
+      parts.push('<a href="mailto:' + esc(s.contactEmail) + '">' + esc(s.contactEmail) + '</a>');
+    }
+    var line = $('header-contact-line');
+    line.innerHTML = parts.join(' · ');
+    line.hidden = !parts.length;
 
     $('qr-caption').textContent = s.qrCaption;
     $('qr-url').textContent = s.qrUrl;
@@ -158,7 +165,7 @@
         'shaded column to place one. Esc when you are done.';
     } else {
       hint.textContent = 'Drag a block to move it, drag its edge to resize. ' +
-        'Double-click a block or press L to lock it. ' +
+        'Hover one to lock or remove it, or press L or Delete. ' +
         'Pick a tutor’s “Add shifts” to draw new ones.';
     }
   }
@@ -440,8 +447,10 @@
     { key: 'notes', label: 'Important notes', type: 'textarea',
       placeholder: 'Closures, the last day of tutoring, anything else on the handout' },
     { key: 'location', label: 'Location', type: 'text' },
-    { key: 'contactName', label: 'Contact name', type: 'text' },
-    { key: 'contactEmail', label: 'Contact email', type: 'email' },
+    { key: 'contactName', label: 'Contact name', type: 'text',
+      placeholder: 'Who to ask about the schedule' },
+    { key: 'contactEmail', label: 'Contact email', type: 'email',
+      placeholder: 'name@example.edu' },
     { key: 'qrUrl', label: 'QR code link', type: 'url' },
     { key: 'qrCaption', label: 'QR caption', type: 'text' }
   ];
@@ -705,6 +714,12 @@
     } else if (!loaded && !TS.store.state.tutors.length) {
       notice('Welcome. Add your tutors, then either build the week by hand with “Add shifts” ' +
         'or press Auto-optimize. Loading the sample roster shows how it all works.', 'info');
+    }
+
+    var contact = TS.store.state.settings;
+    if (!contact.contactName && !contact.contactEmail) {
+      notice('Add a contact name and email under Schedule settings — they go on the printed ' +
+        'schedule so people know who to ask.', 'info');
     }
   }
 

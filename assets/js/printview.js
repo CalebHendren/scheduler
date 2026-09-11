@@ -156,9 +156,12 @@
           (s.effective ? '<p class="pv-subtitle">' + esc(s.effective) + '</p>' : '') +
           '<p class="pv-where">' + esc(s.location) + '</p>' +
         '</div>' +
-        '<div class="pv-head__contact">' +
-          '<p><strong>' + esc(s.contactName) + '</strong><br>' + esc(s.contactEmail) + '</p>' +
-        '</div>' +
+        (s.contactName || s.contactEmail
+          ? '<div class="pv-head__contact"><p>' +
+              (s.contactName ? '<strong>' + esc(s.contactName) + '</strong>' : '') +
+              (s.contactName && s.contactEmail ? '<br>' : '') +
+              esc(s.contactEmail) + '</p></div>'
+          : '') +
       '</header>' +
       buildTable(state, labels) +
       (s.notes

@@ -48,6 +48,12 @@ Auto-optimize is one option, not the only one. Nothing here needs it.
   Locked shifts survive it; everything else is fair game, so it is the wrong button to press
   once people have been told what they are working.
 
+## Removing a shift
+
+Hover a shift and click the **×** in its corner, or focus it and press **Delete**. Either way it
+comes back with **Ctrl+Z**. A locked shift has no **×** and refuses **Delete** — unlock it first.
+**Clear schedule** removes every unlocked shift at once.
+
 ## Undoing
 
 **Ctrl+Z** (**Cmd+Z** on a Mac) undoes the last change, and **Ctrl+Shift+Z** or **Ctrl+Y**
@@ -65,7 +71,8 @@ A locked shift is never moved, resized or removed by **Auto-optimize**, **Auto-f
 press.
 
 - **One shift** — hover it and click the padlock in its corner, double-click it, or press `L`
-  while it is focused. Locked shifts wear a dashed border and keep their padlock showing.
+  while it is focused. Locked shifts wear a dashed border, keep their padlock showing, and lose
+  their remove button.
 - **One tutor** — **Lock all** on their roster row, for the person whose hours are agreed
   while the rest of the week is still moving.
 - **Everything** — **Lock all shifts** in the toolbar, once the week is finished.
@@ -188,9 +195,13 @@ important notes, and a plain-text listing of every shift.
 
 ### What goes on the handout
 
-**Semester** and **Important notes** are both under **Schedule settings**. The notes print in a
-box under the grid — closure dates, the last day of tutoring, anything else people need to read
-off the wall. The default text is the fall 2026 closure schedule; edit it for your term.
+**Semester**, **Contact name**, **Contact email** and **Important notes** are all under
+**Schedule settings**. The contact fields start empty — fill them in once and they print on
+every handout, and appear in the app header.
+
+The notes print in a box under the grid — closure dates, the last day of tutoring, anything
+else people need to read off the wall. The default text is the fall 2026 closure schedule; edit
+it for your term.
 
 ### The hours a schedule shows
 

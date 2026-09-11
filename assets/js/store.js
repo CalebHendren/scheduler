@@ -15,8 +15,8 @@
         'or any time the IMC and/or campus is closed. The last day of tutoring for the fall ' +
         'semester is December 10, 2026.',
       location: 'Student Success Center (IMC 270)',
-      contactName: 'Caleb Hendren, MS',
-      contactEmail: 'caleb.hendren@chattanoogastate.edu',
+      contactName: '',
+      contactEmail: '',
       qrUrl: 'https://www.tutor.com',
       qrCaption: 'Free 24/7 online tutoring',
       minShiftSlots: 2,

@@ -280,6 +280,12 @@
         (a.locked ? 'Unlock' : 'Lock') + ' ' + TS.tutors.esc(full) + ', ' +
         U.DAY_NAMES[a.day] + ' ' + TS.tutors.esc(range) + '">' +
         (a.locked ? '🔒' : '🔓') + '</button>' +
+      // A locked shift has no remove button: locking is what protects a shift
+      // from being taken away, here as much as from Clear schedule.
+      (a.locked ? '' :
+        '<button type="button" class="block__remove" data-remove="1" aria-label="Remove ' +
+        TS.tutors.esc(full) + ', ' + U.DAY_NAMES[a.day] + ' ' + TS.tutors.esc(range) +
+        '">×</button>') +
       '<span class="block__name">' + TS.tutors.esc(labels[tutor.id]) + '</span>' +
       '<span class="block__time">' + TS.tutors.esc(range) + '</span>' +
       '<span class="block__subjects">' + (shorts.join(' · ') || '—') + '</span>' +
@@ -339,7 +345,26 @@
       paintGhost();
     }
 
+    function removeShift(a) {
+      if (a.locked) {
+        notice('That shift is locked. Unlock it first if you want it gone.', 'warn');
+        return;
+      }
+      var tutor = TS.store.getTutor(a.tutorId);
+      var who = tutor ? tutor.firstName : 'That shift';
+      TS.store.removeAssignment(a.id);
+      TS.store.commit('remove');
+      notice('Removed ' + who + ', ' + U.DAY_NAMES[a.day] + ' ' +
+        U.formatRange(a.startSlot, a.endSlot) + '. Ctrl+Z brings it back.', 'info');
+    }
+
     container.addEventListener('click', function (e) {
+      var removeBtn = e.target.closest('.block__remove');
+      if (removeBtn) {
+        var doomed = TS.store.getAssignment(removeBtn.closest('.block').getAttribute('data-id'));
+        if (doomed) removeShift(doomed);
+        return;
+      }
       if (!e.target.closest('.block__lock')) return;
       var a = TS.store.getAssignment(e.target.closest('.block').getAttribute('data-id'));
       if (!a) return;
@@ -351,7 +376,7 @@
     });
 
     container.addEventListener('mousedown', function (e) {
-      if (e.target.closest('.block__lock')) return;
+      if (e.target.closest('.block__lock') || e.target.closest('.block__remove')) return;
       var blockEl = e.target.closest('.block');
       if (!blockEl) { startDraw(e); return; }
       var state = getState();
@@ -437,8 +462,7 @@
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
-        TS.store.removeAssignment(a.id);
-        TS.store.commit('remove');
+        removeShift(a);
         return;
       }
       if (a.locked) return;
@@ -463,7 +487,8 @@
     });
 
     container.addEventListener('dblclick', function (e) {
-      if (e.target.closest('.block__lock')) return;   // the button already toggled
+      // the corner buttons have already done their own work
+      if (e.target.closest('.block__lock') || e.target.closest('.block__remove')) return;
       var blockEl = e.target.closest('.block');
       if (!blockEl) return;
       var a = TS.store.getAssignment(blockEl.getAttribute('data-id'));

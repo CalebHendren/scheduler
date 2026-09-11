@@ -103,8 +103,11 @@
 
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(8.5);
-    pdf.text(s.contactName, pageW - margin, margin + 14, { align: 'right' });
-    pdf.text(s.contactEmail, pageW - margin, margin + 25, { align: 'right' });
+    if (s.contactName) pdf.text(s.contactName, pageW - margin, margin + 14, { align: 'right' });
+    if (s.contactEmail) {
+      pdf.text(s.contactEmail, pageW - margin, (s.contactName ? margin + 25 : margin + 14),
+        { align: 'right' });
+    }
 
     pdf.setDrawColor(ORANGE[0], ORANGE[1], ORANGE[2]);
     pdf.setLineWidth(2);

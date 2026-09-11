@@ -358,10 +358,26 @@ legend { font-weight: 700; font-size: 13px; padding: 0 5px; }
   font-size: 11px; line-height: 1; cursor: pointer;
   visibility: hidden;
 }
+/* The remove button sits beside the padlock and follows the same rule: it is
+   there when you are looking at the block, and gone when you are not. The lock
+   keeps the corner so a locked block's padlock never moves. */
+.block__remove {
+  position: absolute; top: 1px; right: 17px;
+  border: 0; background: none; padding: 0 3px;
+  font-size: 14px; line-height: 1; cursor: pointer;
+  color: inherit; opacity: .75;
+  visibility: hidden;
+}
+.block__remove:hover { opacity: 1; color: var(--danger); }
+.block__remove:focus-visible { outline: 2px solid var(--brand-orange); outline-offset: 1px; }
+
 .block:hover .block__lock,
 .block:focus-visible .block__lock,
 .block:focus-within .block__lock,
-.block[data-locked="1"] .block__lock { visibility: visible; }
+.block[data-locked="1"] .block__lock,
+.block:hover .block__remove,
+.block:focus-visible .block__remove,
+.block:focus-within .block__remove { visibility: visible; }
 .block[data-locked="1"] { border-style: dashed; }
 .block__lock:focus-visible { outline: 2px solid var(--brand-orange); outline-offset: 1px; }
 .block[data-hatch="1"] {
