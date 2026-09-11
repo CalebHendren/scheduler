@@ -1,0 +1,46 @@
+name: Build single-file version
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+
+      - name: Run the scheduling and accessibility suite
+        run: node tools/test-optimizer.mjs
+
+      - name: Build the offline single-file app
+        run: node tools/bundle.mjs
+
+      - name: Upload as a workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: scheduler-local
+          path: dist/scheduler-local.html
+          if-no-files-found: error
+
+      # Tags additionally publish the file as a downloadable release asset.
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "Offline single-file build of the tutor scheduler. Download scheduler-local.html and open it in any browser." \
+            dist/scheduler-local.html \
+          || gh release upload "${GITHUB_REF_NAME}" dist/scheduler-local.html --clobber

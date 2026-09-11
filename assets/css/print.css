@@ -1,0 +1,136 @@
+/* Print / Save-as-PDF rendering.
+   The screen app is hidden entirely and the semantic table takes over, so the
+   PDF Chrome and Edge produce is tagged, selectable and screen-reader
+   navigable rather than a picture of a calendar. */
+
+@page {
+  size: letter landscape;
+  margin: 0.4in;
+}
+
+.app-header,
+.toolbar,
+.layout,
+#dialog-root,
+.skip-link { display: none !important; }
+
+.print-only { display: block !important; }
+
+html, body {
+  background: #fff !important;
+  color: #14181F !important;
+  font-size: 9.5pt;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+* { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px;
+  margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---- header ------------------------------------------------------------ */
+
+.pv-head {
+  display: flex; align-items: flex-end; gap: 20px;
+  border-bottom: 3px solid #FE5000;
+  padding-bottom: 6px; margin-bottom: 8px;
+}
+.pv-head__main { flex: 1 1 auto; }
+.pv-college {
+  margin: 0; font-size: 8pt; letter-spacing: .14em; text-transform: uppercase;
+  color: #10305F; font-weight: 700;
+}
+.pv-head h1 {
+  margin: 1px 0 0; font-family: Georgia, "Times New Roman", serif;
+  font-size: 17pt; color: #002855;
+}
+.pv-subtitle { margin: 1px 0 0; font-size: 9pt; color: #3A4553; }
+.pv-where { margin: 2px 0 0; font-size: 9.5pt; font-weight: 700; }
+.pv-head__contact { text-align: right; font-size: 8.5pt; line-height: 1.35; }
+.pv-head__contact p { margin: 0; }
+
+/* ---- grid -------------------------------------------------------------- */
+
+.pv-table {
+  width: 100%; border-collapse: collapse; table-layout: fixed;
+  page-break-inside: avoid;
+}
+.pv-table thead th {
+  background: #10305F; color: #fff;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10pt; padding: 3px 2px;
+  border: 1px solid #10305F;
+}
+.pv-time-head { width: 52px; }
+.pv-time {
+  width: 52px; text-align: right; padding-right: 4px;
+  font-size: 7.5pt; color: #3A4553; font-weight: 600;
+  white-space: nowrap;
+  vertical-align: top;
+}
+.pv-table tbody tr { height: 15px; }
+.pv-empty { border-bottom: 1px solid #EDF1F6; border-right: 1px solid #DCE3EC; }
+.pv-table tbody tr.pv-hour .pv-empty,
+.pv-table tbody tr.pv-hour .pv-time { border-top: 1px solid #B9C3D1; }
+
+.pv-block {
+  vertical-align: top;
+  border: 1px solid #6B7789;
+  padding: 2px 3px; line-height: 1.15;
+  overflow: hidden;
+}
+.pv-block[data-hatch="1"] {
+  background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.14) 0 4px, transparent 4px 9px);
+}
+.pv-block__name { display: block; font-weight: 700; font-size: 8.5pt; }
+.pv-block__time { display: block; font-size: 7pt; }
+.pv-block__subjects { display: block; font-size: 7pt; font-weight: 700; letter-spacing: .02em; }
+
+/* ---- day separation ----
+   A day can run several lanes wide, so the day break needs a rule that is
+   unmistakably heavier than the one between two lanes of the same day, plus a
+   wash on alternating days for the stretches where blocks run edge to edge.
+   These come after .pv-block: its border shorthand would otherwise win. */
+.pv-table .pv-dayend { border-right: 2.5pt solid #10305F; }
+.pv-table thead th.pv-dayend { border-right: 2.5pt solid #fff; }
+.pv-table .pv-time { border-right: 2.5pt solid #10305F; }
+.pv-day-alt.pv-empty { background: #F2F6FB; }
+
+/* ---- footer ------------------------------------------------------------ */
+
+.pv-foot {
+  display: flex; gap: 16px; align-items: flex-start;
+  margin-top: 8px; padding-top: 6px; border-top: 1px solid #B9C3D1;
+  page-break-inside: avoid;
+}
+.pv-qr .qr-svg { width: 74px; height: 74px; border: 1px solid #B9C3D1; }
+.pv-qr__text { font-size: 8pt; line-height: 1.35; max-width: 190px; }
+.pv-qr__text p { margin: 0 0 1px; }
+.pv-qr__url { font-weight: 700; word-break: break-all; }
+
+.pv-legend { flex: 1 1 auto; }
+.pv-legend h2 { font-size: 9pt; margin: 0 0 3px; font-family: Georgia, serif; }
+.pv-legend ul {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 3px 14px; font-size: 8pt;
+}
+.pv-legend li { display: flex; align-items: center; gap: 5px; }
+.pv-swatch { display: inline-block; width: 16px; height: 10px; border: 1px solid #6B7789; }
+.pv-legend__subjects { color: #3A4553; font-weight: 700; font-size: 7pt; }
+
+/* ---- text listing ------------------------------------------------------ */
+
+.pv-listing {
+  page-break-before: always;
+  font-size: 10pt;
+}
+.pv-listing h2 { font-family: Georgia, serif; font-size: 13pt; color: #002855; margin: 0 0 6px; }
+.pv-listing h3 {
+  font-family: Georgia, serif; font-size: 11pt; margin: 10px 0 3px;
+  border-bottom: 1px solid #B9C3D1;
+}
+.pv-listing ul { margin: 0; padding-left: 18px; }
+.pv-listing li { margin-bottom: 1px; }

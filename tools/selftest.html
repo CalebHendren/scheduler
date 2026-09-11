@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scheduler self test</title>
+<style>
+  body { font: 13px/1.5 ui-monospace, Consolas, monospace; padding: 16px; }
+  .pass { color: #0A6B2E; } .fail { color: #A4262C; }
+  pre { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1 id="headline">Running…</h1>
+<pre id="out"></pre>
+
+<script src="../assets/js/util.js"></script>
+<script src="../assets/js/store.js"></script>
+<script src="../assets/js/csv.js"></script>
+<script src="../assets/js/optimizer.js"></script>
+<script src="tests.js"></script>
+<script>
+  (function () {
+    var out = [];
+    var result;
+    try {
+      result = TS.tests.run();
+    } catch (e) {
+      document.getElementById('headline').textContent = 'RESULT: ERROR ' + (e && e.message);
+      document.getElementById('out').textContent = (e && e.stack) || String(e);
+      return;
+    }
+
+    result.lines.forEach(function (l) { out.push(l); });
+    out.push('');
+    out.push(result.passed + ' passed, ' + result.failed + ' failed');
+    result.failures.forEach(function (f) { out.push('FAIL: ' + f); });
+
+    document.getElementById('headline').textContent =
+      'RESULT: ' + (result.failed ? 'FAIL' : 'PASS') +
+      ' (' + result.passed + ' passed, ' + result.failed + ' failed)';
+    document.getElementById('headline').className = result.failed ? 'fail' : 'pass';
+    document.getElementById('out').textContent = out.join('\n');
+  })();
+</script>
+</body>
+</html>
