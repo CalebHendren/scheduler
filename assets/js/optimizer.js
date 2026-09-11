@@ -631,17 +631,27 @@
     return sol;
   }
 
+  /* Coverage is reported over the hours the centre is actually open -- the 9-to-5
+   * core, widened to whatever anyone is available for. Counting 7:00 AM against
+   * a roster where nobody works mornings would report two thirds of the week as
+   * uncovered and give the coordinator nothing to act on.
+   */
   function stats(state, assignments) {
     var ctx = buildContext(state);
     var sol = solutionFromAssignments(ctx, assignments);
-    var covered = 0, doubled = 0, subjectSum = 0;
-    for (var i = 0; i < U.TOTAL_SLOTS; i++) {
-      var n = sol.slotTutors[i].length;
-      if (n >= 1) covered++;
-      if (n >= 2) doubled++;
-      var union = 0;
-      for (var j = 0; j < n; j++) union |= ctx.tutors[sol.slotTutors[i][j]].mask;
-      subjectSum += U.popcount(union);
+    var win = U.editorWindow(state.tutors, assignments);
+    var covered = 0, doubled = 0, subjectSum = 0, openSlots = 0;
+    for (var d = 0; d < U.DAYS; d++) {
+      for (var s = win.start; s < win.end; s++) {
+        var i = U.idx(d, s);
+        openSlots++;
+        var n = sol.slotTutors[i].length;
+        if (n >= 1) covered++;
+        if (n >= 2) doubled++;
+        var union = 0;
+        for (var j = 0; j < n; j++) union |= ctx.tutors[sol.slotTutors[i][j]].mask;
+        subjectSum += U.popcount(union);
+      }
     }
     var perTutor = ctx.tutors.map(function (t) {
       return { id: t.id, hours: sol.tutorSlots[t.index] / 2 };
@@ -649,7 +659,8 @@
     return {
       totalHours: sol.assignedSlots / 2,
       coveredSlots: covered,
-      totalSlots: U.TOTAL_SLOTS,
+      totalSlots: openSlots,
+      window: win,
       doubledHours: doubled / 2,
       avgSubjects: covered ? subjectSum / covered : 0,
       score: totalScore(sol),
@@ -733,10 +744,11 @@
     var gaps = [];
     var budgetSpent = isFinite(ctx.budgetSlots) && sol.assignedSlots >= ctx.budgetSlots;
 
+    var win = U.editorWindow(state.tutors, assignments);
     for (var d = 0; d < U.DAYS; d++) {
       var run = null;
-      for (var s = 0; s <= U.SLOTS_PER_DAY; s++) {
-        var empty = s < U.SLOTS_PER_DAY && sol.slotTutors[U.idx(d, s)].length === 0;
+      for (var s = win.start; s <= win.end; s++) {
+        var empty = s < win.end && sol.slotTutors[U.idx(d, s)].length === 0;
         if (empty && !run) {
           run = { day: d, start: s, end: s + 1, reason: reasonFor(ctx, sol, d, s, budgetSpent) };
         } else if (empty) {
@@ -780,13 +792,16 @@
     }
 
     if (!anyAvailable) return 'unavailable';
-    if (budgetSpent) return 'budget';
     if (!anyWithHours) return 'capped';
+    // Whether a legal shift exists at all is checked before the budget: a hole
+    // no shift can reach is not a money problem, and blaming the budget sends
+    // the coordinator to raise a number that would change nothing.
+    if (!anyPlaceable) return 'rest';
+    if (budgetSpent) return 'budget';
     // Somebody can legally work here, so the hole is simply unscheduled --
     // saying "break rules" here would send the coordinator chasing a
     // constraint that is not actually binding.
-    if (anyPlaceable) return 'unscheduled';
-    return 'rest';
+    return 'unscheduled';
   }
 
   var GAP_REASONS = {

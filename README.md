@@ -18,6 +18,9 @@ and post — with a QR code to tutor.com for the hours nobody is on shift.
 
 1. Open the site (or the single-file version) in any modern browser.
 2. Click **Load sample roster** to see how it works, or **Add tutor** to start your own.
+   The sample is ten tutors, each approved for 15 hours, who between them handed in 80
+   hours of availability — a couple offering the full 15, most a few afternoons, one or two
+   a single shift.
 3. For each tutor: first and last name, the class checkboxes, their approved weekly hours
    (15 by default), and their availability.
 4. Fill the week in whichever way suits you — see [Three ways to place a
@@ -46,6 +49,22 @@ Auto-optimize is one option, not the only one. Nothing here needs it.
   Locked shifts survive it; everything else is fair game, so it is the wrong button to press
   once people have been told what they are working.
 
+## Removing a shift
+
+Hover a shift and click the **×** in its corner, or focus it and press **Delete**. Either way it
+comes back with **Ctrl+Z**. A locked shift has no **×** and refuses **Delete** — unlock it first.
+**Clear schedule** removes every unlocked shift at once.
+
+## Undoing
+
+**Ctrl+Z** (**Cmd+Z** on a Mac) undoes the last change, and **Ctrl+Shift+Z** or **Ctrl+Y**
+redoes it. The **Undo** button in the toolbar does the same thing and greys out when there is
+nothing left to undo. Everything is undoable — a dragged shift, a deleted tutor, an
+auto-optimize, a CSV import, even **Start over** — up to sixty steps back. Inside a text box the
+shortcut is left alone, so it still undoes your typing.
+
+History lives in the tab and is not saved, so it starts empty each visit.
+
 ## Locking
 
 A locked shift is never moved, resized or removed by **Auto-optimize**, **Auto-fit** or
@@ -53,7 +72,8 @@ A locked shift is never moved, resized or removed by **Auto-optimize**, **Auto-f
 press.
 
 - **One shift** — hover it and click the padlock in its corner, double-click it, or press `L`
-  while it is focused. Locked shifts wear a dashed border and keep their padlock showing.
+  while it is focused. Locked shifts wear a dashed border, keep their padlock showing, and lose
+  their remove button.
 - **One tutor** — **Lock all** on their roster row, for the person whose hours are agreed
   while the rest of the week is still moving.
 - **Everything** — **Lock all shifts** in the toolbar, once the week is finished.
@@ -67,6 +87,11 @@ The optimizer builds a first schedule greedily, then spends a couple of seconds 
 with simulated annealing. It runs in slices so the page never freezes, and **Cancel** works.
 
 ### Rules it will never break
+
+Approved hours and offered hours are different things. **Approved hours per week** is what the
+department allows — the same 15 for everyone in the sample. Availability is what that tutor
+handed in: which of those hours they actually want to work. A tutor is never scheduled beyond
+either one, and the hours they offered are hours the optimizer tries to use.
 
 | Rule | Default | Where to change it |
 |---|---|---|
@@ -164,14 +189,42 @@ Two buttons, for two different needs:
 
 - **Print / Save as PDF** — the one to use for anything you hand out or post. It prints from a
   real HTML table with proper row and column headers, so the PDF Chrome and Edge produce has
-  selectable text, keeps its table structure, and carries a document language. One landscape
-  page for the grid, plus a plain-text listing of every shift.
+  selectable text, keeps its table structure, and carries a document language. Two pages: the
+  calendar, the notes, the QR code and the legend on page 1, and a plain-text listing of every
+  shift, in two columns, on page 2.
 - **Download PDF** — one click, no print dialog, drawn directly with jsPDF. Same landscape
   layout and real text (nothing is a screenshot), but jsPDF does not emit a tagged structure
   tree, so it is the convenience option rather than the accessible one.
 
 Both are landscape US Letter. Printing always uses the light theme even if you are working in
-dark mode.
+dark mode. Both carry the semester, the location and contact, the QR code, a tutor legend, the
+important notes, and a plain-text listing of every shift.
+
+### What goes on the handout
+
+**Semester**, **Contact name**, **Contact email** and **Important notes** are all under
+**Schedule settings**. The contact fields start empty — fill them in once and they print on
+every handout, and appear in the app header.
+
+The notes print in a box under the grid — closure dates, the last day of tutoring, anything
+else people need to read off the wall. The default text is the fall 2026 closure schedule; edit
+it for your term.
+
+### The hours a schedule shows
+
+A schedule is drawn over the hours that are actually in play, never narrower than 9:00 AM to
+5:00 PM:
+
+- **While editing**, the grid covers 9-to-5 plus every hour any tutor is available, so there is
+  always somewhere to place a shift someone has offered to work.
+- **On the handout**, it covers 9-to-5 plus every hour actually scheduled. Nobody working before
+  9:00 means the PDF starts at 9:00, and the grid grows to fill the page rather than wasting a
+  third of it on empty early mornings.
+
+The underlying week still runs 7:00 AM to 8:30 PM — that is the range availability can be
+painted over, and the range a tutor can be scheduled in. Only the drawing narrows. Coverage and
+**Uncovered time** are reported over the same open hours, so an empty 7:00 AM nobody can work
+is not counted against you.
 
 ### Accessibility notes
 

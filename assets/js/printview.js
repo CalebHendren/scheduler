@@ -49,7 +49,6 @@
     var mask = U.subjectMask(tutor.subjects);
     var shorts = U.maskToShort(mask);
     var full = (tutor.firstName + ' ' + tutor.lastName).trim();
-
     return '<td class="' + cls + '" rowspan="' + (a.endSlot - a.startSlot) + '"' +
       ' style="background:' + colors.bg + ';border-left:4px solid ' + colors.bar + ';color:' + colors.ink + '"' +
       (U.usesHatch(tutor.colorIndex) ? ' data-hatch="1"' : '') + '>' +
@@ -62,11 +61,14 @@
 
   function buildTable(state, labels) {
     var dark = false; // print is always light
+    var win = U.scheduleWindow(state.assignments);
     var days = [];
     for (var d = 0; d < U.DAYS; d++) days.push(laneGrid(state.assignments, d));
 
     var html = '<table class="pv-table"><caption class="visually-hidden">' +
-      'Weekly tutoring schedule, Monday through Friday, 7:00 AM to 8:30 PM</caption><thead><tr>' +
+      'Weekly tutoring schedule, Monday through Friday, ' +
+      esc(U.formatMinutes(U.slotStartMinutes(win.start))) + ' to ' +
+      esc(U.formatMinutes(U.slotStartMinutes(win.end))) + '</caption><thead><tr>' +
       '<th scope="col" class="pv-time-head pv-dayend">Time</th>';
     for (var i = 0; i < U.DAYS; i++) {
       html += '<th scope="' + (days[i].lanes > 1 ? 'colgroup' : 'col') + '"' +
@@ -76,7 +78,7 @@
     }
     html += '</tr></thead><tbody>';
 
-    for (var s = 0; s < U.SLOTS_PER_DAY; s++) {
+    for (var s = win.start; s < win.end; s++) {
       var onHour = U.slotStartMinutes(s) % 60 === 0;
       html += '<tr' + (onHour ? ' class="pv-hour"' : '') + '>' +
         '<th scope="row" class="pv-time">' +
@@ -112,7 +114,9 @@
       if (!dayBlocks.length) continue;
       any = true;
 
-      html += '<h3>' + U.DAY_NAMES[d] + '</h3><ul>';
+      // Each day is one unbreakable unit so a column never splits a heading
+      // from the shifts under it.
+      html += '<section class="pv-listing__day"><h3>' + U.DAY_NAMES[d] + '</h3><ul>';
       dayBlocks.forEach(function (a) {
         var tutor = TS.store.getTutor(a.tutorId);
         var mask = U.subjectMask(tutor.subjects);
@@ -120,7 +124,7 @@
           esc(U.formatRange(a.startSlot, a.endSlot)) + ' — ' +
           esc(U.maskToLabels(mask).join(', ') || 'no subjects assigned') + '</li>';
       });
-      html += '</ul>';
+      html += '</ul></section>';
     }
 
     if (!any) html += '<p>No shifts are scheduled yet.</p>';
@@ -145,21 +149,26 @@
     var s = state.settings;
     var qrSvg = TS.qr.toSvg(s.qrUrl, { label: 'QR code linking to ' + s.qrUrl });
 
-    var subtitle = [s.term, s.effective].filter(Boolean).join(' · ');
-
     container.innerHTML =
       '<header class="pv-head">' +
         '<div class="pv-head__main">' +
           '<p class="pv-college">Chattanooga State Community College</p>' +
           '<h1>' + esc(s.title) + '</h1>' +
-          (subtitle ? '<p class="pv-subtitle">' + esc(subtitle) + '</p>' : '') +
+          (s.term ? '<p class="pv-term">' + esc(s.term) + '</p>' : '') +
+          (s.effective ? '<p class="pv-subtitle">' + esc(s.effective) + '</p>' : '') +
           '<p class="pv-where">' + esc(s.location) + '</p>' +
         '</div>' +
-        '<div class="pv-head__contact">' +
-          '<p><strong>' + esc(s.contactName) + '</strong><br>' + esc(s.contactEmail) + '</p>' +
-        '</div>' +
+        (s.contactName || s.contactEmail
+          ? '<div class="pv-head__contact"><p>' +
+              (s.contactName ? '<strong>' + esc(s.contactName) + '</strong>' : '') +
+              (s.contactName && s.contactEmail ? '<br>' : '') +
+              esc(s.contactEmail) + '</p></div>'
+          : '') +
       '</header>' +
       buildTable(state, labels) +
+      (s.notes
+        ? '<section class="pv-notes"><h2>Important notes</h2><p>' + esc(s.notes) + '</p></section>'
+        : '') +
       '<div class="pv-foot">' +
         '<div class="pv-qr">' + qrSvg + '</div>' +
         '<div class="pv-qr__text">' +

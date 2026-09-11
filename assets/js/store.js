@@ -9,11 +9,14 @@
   function defaultSettings() {
     return {
       title: 'Science Tutoring Schedule',
-      term: '',
+      term: 'Fall 2026',
       effective: '',
+      notes: 'No tutoring will be available September 7, October 5–11, or November 23–29, ' +
+        'or any time the IMC and/or campus is closed. The last day of tutoring for the fall ' +
+        'semester is December 10, 2026.',
       location: 'Student Success Center (IMC 270)',
-      contactName: 'Caleb Hendren, MS',
-      contactEmail: 'caleb.hendren@chattanoogastate.edu',
+      contactName: '',
+      contactEmail: '',
       qrUrl: 'https://www.tutor.com',
       qrCaption: 'Free 24/7 online tutoring',
       minShiftSlots: 2,
@@ -40,7 +43,70 @@
   function emit(reason) {
     for (var i = 0; i < listeners.length; i++) listeners[i](state, reason);
   }
-  function commit(reason) { save(); emit(reason || 'change'); }
+
+  /* ---- undo ----
+   * Every change in the app already funnels through commit(), so history is
+   * kept here rather than asking each caller to remember to record itself.
+   * `mark` is the state as it stood after the last commit, which is exactly
+   * the state to go back to when the next one lands.
+   */
+  var MAX_HISTORY = 60;
+  var undoStack = [];
+  var redoStack = [];
+  var mark = null;   // set below, once serialize() is reachable
+
+  function serialize() {
+    return JSON.stringify({ settings: state.settings, tutors: state.tutors, assignments: state.assignments });
+  }
+
+  function restore(json) {
+    state = migrate(JSON.parse(json));
+    mark = serialize();
+    save();
+  }
+
+  function commit(reason) {
+    reason = reason || 'change';
+    if (mark !== null) {
+      undoStack.push({ json: mark, reason: reason });
+      if (undoStack.length > MAX_HISTORY) undoStack.shift();
+      redoStack.length = 0;
+    }
+    mark = serialize();
+    save();
+    emit(reason);
+  }
+
+  function canUndo() { return undoStack.length > 0; }
+  function canRedo() { return redoStack.length > 0; }
+
+  // Both return the reason of the change they stepped over, so the caller can
+  // say what just happened, or null when there was nothing to step over.
+  function undo() {
+    if (!undoStack.length) return null;
+    var entry = undoStack.pop();
+    redoStack.push({ json: serialize(), reason: entry.reason });
+    restore(entry.json);
+    emit('undo');
+    return entry.reason;
+  }
+
+  function redo() {
+    if (!redoStack.length) return null;
+    var entry = redoStack.pop();
+    undoStack.push({ json: serialize(), reason: entry.reason });
+    restore(entry.json);
+    emit('redo');
+    return entry.reason;
+  }
+
+  function clearHistory() {
+    undoStack.length = 0;
+    redoStack.length = 0;
+    mark = serialize();
+  }
+
+  mark = serialize();
 
   var storageWorks = null;
 
@@ -85,6 +151,7 @@
     try {
       var parsed = JSON.parse(raw);
       state = migrate(parsed);
+      clearHistory();   // the first change of the session undoes back to this
       return true;
     } catch (e) {
       if (root.console) root.console.warn('Saved schedule was unreadable; starting fresh.');
@@ -251,28 +318,38 @@
 
   var MON = 0, TUE = 1, WED = 2, THU = 3, FRI = 4;
 
+  /* Everyone is approved for the same 15 hours a week -- that is a department
+   * decision, not a personal one. What differs is availability, because these
+   * tutors are students first: a couple can offer the full 15, most offer a
+   * few afternoons around their own classes, and one or two can only manage a
+   * single shift. Eighty hours across the roster, nobody before 9:00 AM, and
+   * between them they cover 9:00 to 6:00 every day.
+   */
   function sampleTutors() {
     return [
+      // 15 h -- available the full week they are approved for
       { firstName: 'Anna', lastName: 'Harden', subjects: { ap1: true, ap2: true },
-        availability: availability([[[MON, WED, FRI], '12:00', '17:00']]) },
+        availability: availability([[[MON, WED, FRI], '09:00', '14:00']]) },
       { firstName: 'Marcus', lastName: 'Bell', subjects: { bio: true },
-        availability: availability([[[MON, TUE, WED, THU], '08:00', '13:00']]) },
+        availability: availability([[[TUE, THU], '09:00', '14:00'], [[MON], '13:00', '18:00']]) },
+      // 6-10 h -- the usual case, two or three shifts around classes
       { firstName: 'Priya', lastName: 'Raman', subjects: { ap1: true, micro: true },
-        availability: availability([[[TUE, THU], '13:00', '20:30']]) },
+        availability: availability([[[MON, WED], '14:00', '18:00'], [[FRI], '14:00', '16:00']]) },
       { firstName: 'Devon', lastName: 'Pierce', subjects: { ap1: true },
-        availability: availability([[[MON, TUE, WED, THU, FRI], '15:00', '20:00']]) },
+        availability: availability([[[TUE, THU], '14:00', '18:00']]) },
       { firstName: 'Sofia', lastName: 'Marín', subjects: { bio: true, micro: true },
-        availability: availability([[[MON, WED], '07:00', '14:00'], [[FRI], '09:00', '15:00']]) },
+        availability: availability([[[FRI], '09:00', '14:00'], [[WED], '15:00', '18:00']]) },
       { firstName: 'Jamal', lastName: 'Whitfield', subjects: { ap2: true },
-        availability: availability([[[WED, THU], '16:00', '20:30']]) },
+        availability: availability([[[WED], '10:00', '14:00'], [[FRI], '14:00', '18:00']]) },
       { firstName: 'Hannah', lastName: 'Ochoa', subjects: { bio: true, ap1: true, ap2: true },
-        availability: availability([[[TUE, WED, THU, FRI], '10:00', '16:00']]) },
+        availability: availability([[[TUE, THU], '12:00', '15:00']]) },
+      // 3-4 h -- one shift is all their own timetable leaves
       { firstName: 'Eli', lastName: 'Novak', subjects: { micro: true },
-        availability: availability([[[MON, WED], '17:00', '20:30']]) },
+        availability: availability([[[MON, WED], '10:00', '12:00']]) },
       { firstName: 'Anna', lastName: 'Henry', subjects: { ap1: true, ap2: true, micro: true },
-        availability: availability([[[MON, TUE, WED, THU, FRI], '07:00', '12:00']]) },
+        availability: availability([[[THU], '15:00', '18:00']]) },
       { firstName: 'Trent', lastName: 'Boyd', subjects: { bio: true, micro: true },
-        availability: availability([[[TUE, THU, FRI], '14:00', '20:30']]) }
+        availability: availability([[[TUE], '15:00', '18:00']]) }
     ];
   }
 
@@ -296,6 +373,11 @@
     on: on,
     emit: emit,
     commit: commit,
+    undo: undo,
+    redo: redo,
+    canUndo: canUndo,
+    canRedo: canRedo,
+    clearHistory: clearHistory,
     save: save,
     storageAvailable: storageAvailable,
     load: load,

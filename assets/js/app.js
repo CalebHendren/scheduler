@@ -67,10 +67,17 @@
     $('app-title').textContent = s.title;
     doc.title = s.title + ' — Chattanooga State';
     $('header-location').textContent = s.location;
-    $('header-contact').textContent = s.contactName;
-    var mail = $('header-email');
-    mail.textContent = s.contactEmail;
-    mail.href = 'mailto:' + s.contactEmail;
+
+    // Contact details start empty and are filled in under Schedule settings,
+    // so every piece of the line is optional, separator included.
+    var parts = [];
+    if (s.contactName) parts.push(esc(s.contactName));
+    if (s.contactEmail) {
+      parts.push('<a href="mailto:' + esc(s.contactEmail) + '">' + esc(s.contactEmail) + '</a>');
+    }
+    var line = $('header-contact-line');
+    line.innerHTML = parts.join(' · ');
+    line.hidden = !parts.length;
 
     $('qr-caption').textContent = s.qrCaption;
     $('qr-url').textContent = s.qrUrl;
@@ -110,6 +117,36 @@
     }).join('');
   }
 
+  // What the undo notice calls each kind of change.
+  var CHANGE_LABELS = {
+    'add-tutor': 'adding a tutor', 'edit-tutor': 'editing a tutor',
+    'remove-tutor': 'removing a tutor', 'add-shift': 'adding a shift',
+    'move': 'moving a shift', 'remove': 'removing a shift',
+    'lock': 'locking a shift', 'lock-tutor': 'locking a tutor’s shifts',
+    'lock-all': 'locking every shift', 'fit-tutor': 'auto-fitting a tutor',
+    optimize: 'auto-optimizing', clear: 'clearing the schedule',
+    sample: 'loading the sample roster', reset: 'starting over',
+    settings: 'a settings change', 'import-csv': 'a CSV import',
+    'import': 'an import', replace: 'loading a file', theme: 'a theme change'
+  };
+
+  function renderUndo() {
+    var btn = $('btn-undo');
+    btn.disabled = !TS.store.canUndo();
+  }
+
+  function undoChange() {
+    var reason = TS.store.undo();
+    if (!reason) { notice('There is nothing left to undo.', 'info'); return; }
+    notice('Undid ' + (CHANGE_LABELS[reason] || 'the last change') + '.', 'info');
+  }
+
+  function redoChange() {
+    var reason = TS.store.redo();
+    if (!reason) return;
+    notice('Redid ' + (CHANGE_LABELS[reason] || 'the last change') + '.', 'info');
+  }
+
   function renderLockAll(state) {
     var btn = $('btn-lock-all');
     var shifts = state.assignments;
@@ -128,7 +165,7 @@
         'shaded column to place one. Esc when you are done.';
     } else {
       hint.textContent = 'Drag a block to move it, drag its edge to resize. ' +
-        'Double-click a block or press L to lock it. ' +
+        'Hover one to lock or remove it, or press L or Delete. ' +
         'Pick a tutor’s “Add shifts” to draw new ones.';
     }
   }
@@ -148,6 +185,7 @@
     TS.calendar.render($('calendar'), state, { selectedTutorId: selectedTutorId });
     renderCalendarHint(state);
     renderLockAll(state);
+    renderUndo();
     renderStats(state);
     renderGaps(state);
     TS.printview.render($('print-view'), state);
@@ -404,11 +442,15 @@
 
   var SETTING_FIELDS = [
     { key: 'title', label: 'Schedule title', type: 'text' },
-    { key: 'term', label: 'Term', type: 'text', placeholder: 'Fall 2026' },
+    { key: 'term', label: 'Semester', type: 'text', placeholder: 'Fall 2026' },
     { key: 'effective', label: 'Effective dates', type: 'text', placeholder: 'Aug 24 – Dec 11' },
+    { key: 'notes', label: 'Important notes', type: 'textarea',
+      placeholder: 'Closures, the last day of tutoring, anything else on the handout' },
     { key: 'location', label: 'Location', type: 'text' },
-    { key: 'contactName', label: 'Contact name', type: 'text' },
-    { key: 'contactEmail', label: 'Contact email', type: 'email' },
+    { key: 'contactName', label: 'Contact name', type: 'text',
+      placeholder: 'Who to ask about the schedule' },
+    { key: 'contactEmail', label: 'Contact email', type: 'email',
+      placeholder: 'name@example.edu' },
     { key: 'qrUrl', label: 'QR code link', type: 'url' },
     { key: 'qrCaption', label: 'QR caption', type: 'text' }
   ];
@@ -428,9 +470,14 @@
     var html = '';
 
     SETTING_FIELDS.forEach(function (f) {
+      var ph = f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '';
       html += '<div class="field"><label for="set-' + f.key + '">' + esc(f.label) + '</label>' +
-        '<input type="' + f.type + '" id="set-' + f.key + '" data-setting="' + f.key + '" value="' +
-        esc(s[f.key]) + '"' + (f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '') + '></div>';
+        (f.type === 'textarea'
+          ? '<textarea id="set-' + f.key + '" data-setting="' + f.key + '" rows="4"' + ph + '>' +
+              esc(s[f.key]) + '</textarea>'
+          : '<input type="' + f.type + '" id="set-' + f.key + '" data-setting="' + f.key +
+              '" value="' + esc(s[f.key]) + '"' + ph + '>') +
+        '</div>';
     });
 
     html += '<fieldset><legend>Scheduling rules</legend><div class="grid-2">';
@@ -548,6 +595,7 @@
     $('btn-cancel').addEventListener('click', cancelOptimize);
     $('btn-add-tutor').addEventListener('click', addTutor);
     $('btn-lock-all').addEventListener('click', lockEverything);
+    $('btn-undo').addEventListener('click', undoChange);
 
     $('btn-clear').addEventListener('click', function () {
       var kept = TS.store.state.assignments.filter(function (a) { return a.locked; });
@@ -616,6 +664,23 @@
       getSelectedTutorId: function () { return selectedTutorId; }
     });
 
+    // Ctrl+Z anywhere but a text field, where the browser's own undo belongs.
+    doc.addEventListener('keydown', function (e) {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      var key = String(e.key).toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+
+      var el = e.target;
+      var tag = el && el.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' ||
+          (el && el.isContentEditable)) return;
+      if (doc.getElementById('dialog-root').firstChild) return;
+
+      e.preventDefault();
+      if (key === 'y' || e.shiftKey) redoChange();
+      else undoChange();
+    });
+
     doc.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape' || !selectedTutorId) return;
       if (doc.getElementById('dialog-root').firstChild) return; // the dialog owns Esc
@@ -649,6 +714,12 @@
     } else if (!loaded && !TS.store.state.tutors.length) {
       notice('Welcome. Add your tutors, then either build the week by hand with “Add shifts” ' +
         'or press Auto-optimize. Loading the sample roster shows how it all works.', 'info');
+    }
+
+    var contact = TS.store.state.settings;
+    if (!contact.contactName && !contact.contactEmail) {
+      notice('Add a contact name and email under Schedule settings — they go on the printed ' +
+        'schedule so people know who to ask.', 'info');
     }
   }
 

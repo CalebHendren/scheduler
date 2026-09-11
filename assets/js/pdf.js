@@ -81,33 +81,50 @@
     pdf.setTextColor(0, 40, 85);
     pdf.text(s.title, margin, margin + 26);
 
+    var whereY = margin + 40;
+    if (s.term) {
+      pdf.setFont('times', 'bold');
+      pdf.setFontSize(12);
+      pdf.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
+      pdf.text(s.term, margin, whereY);
+      whereY += 12;
+    }
+    if (s.effective) {
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+      pdf.text(s.effective, margin, whereY);
+      whereY += 11;
+    }
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(9);
     pdf.setTextColor(INK[0], INK[1], INK[2]);
-    var subtitle = [s.term, s.effective].filter(Boolean).join(' · ');
-    var whereY = margin + 40;
-    if (subtitle) {
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-      pdf.text(subtitle, margin, whereY);
-      whereY += 11;
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(INK[0], INK[1], INK[2]);
-    }
     pdf.text(s.location, margin, whereY);
 
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(8.5);
-    pdf.text(s.contactName, pageW - margin, margin + 14, { align: 'right' });
-    pdf.text(s.contactEmail, pageW - margin, margin + 25, { align: 'right' });
+    if (s.contactName) pdf.text(s.contactName, pageW - margin, margin + 14, { align: 'right' });
+    if (s.contactEmail) {
+      pdf.text(s.contactEmail, pageW - margin, (s.contactName ? margin + 25 : margin + 14),
+        { align: 'right' });
+    }
 
     pdf.setDrawColor(ORANGE[0], ORANGE[1], ORANGE[2]);
     pdf.setLineWidth(2);
     pdf.line(margin, whereY + 7, pageW - margin, whereY + 7);
 
     /* ---- grid geometry ---- */
+    var win = U.scheduleWindow(state.assignments);
+    var slotCount = win.end - win.start;
+
     var gridTop = whereY + 18;
-    var footH = 92;
+    // The notes band is measured before the grid is laid out, so a long note
+    // shortens the grid rather than running off the page.
+    var noteLines = s.notes
+      ? pdf.splitTextToSize(s.notes, pageW - margin * 2 - 12)
+      : [];
+    var noteH = noteLines.length ? 16 + noteLines.length * 9 : 0;
+    var footH = 92 + noteH;
     var gridBottom = pageH - margin - footH;
     var headH = 15;
     var gutterW = 44;
@@ -115,7 +132,7 @@
     // Blocks stop short of the column edge, so a day's shifts never touch the
     // next day's divider.
     var DAY_PAD = 3;
-    var rowH = (gridBottom - gridTop - headH) / U.SLOTS_PER_DAY;
+    var rowH = (gridBottom - gridTop - headH) / slotCount;
     var bodyTop = gridTop + headH;
 
     pdf.setFillColor(NAVY[0], NAVY[1], NAVY[2]);
@@ -133,19 +150,19 @@
      */
     for (var shade = 1; shade < U.DAYS; shade += 2) {
       pdf.setFillColor(TINT[0], TINT[1], TINT[2]);
-      pdf.rect(margin + gutterW + colW * shade, bodyTop, colW, U.SLOTS_PER_DAY * rowH, 'F');
+      pdf.rect(margin + gutterW + colW * shade, bodyTop, colW, slotCount * rowH, 'F');
     }
 
     /* ---- hour lines and times ---- */
     pdf.setLineWidth(0.4);
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(6.5);
-    for (var slot = 0; slot <= U.SLOTS_PER_DAY; slot++) {
-      var y = bodyTop + slot * rowH;
+    for (var slot = win.start; slot <= win.end; slot++) {
+      var y = bodyTop + (slot - win.start) * rowH;
       var onHour = U.slotStartMinutes(slot) % 60 === 0;
       pdf.setDrawColor.apply(pdf, onHour ? RULE : FAINT);
       pdf.line(margin + gutterW, y, pageW - margin, y);
-      if (onHour || slot === U.SLOTS_PER_DAY) {
+      if (onHour || slot === win.end) {
         pdf.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
         pdf.text(U.formatMinutes(U.slotStartMinutes(slot)), margin + gutterW - 4, y + 3, { align: 'right' });
       }
@@ -166,7 +183,7 @@
         var bar = U.hexToRgb(colors.bar);
         var laneW = (colW - DAY_PAD * 2) / place.lanes;
         var bx = margin + gutterW + colW * day + DAY_PAD + laneW * place.lane + 1;
-        var by = bodyTop + a.startSlot * rowH + 0.5;
+        var by = bodyTop + (a.startSlot - win.start) * rowH + 0.5;
         var bw = laneW - 2;
         var bh = (a.endSlot - a.startSlot) * rowH - 1;
 
@@ -202,7 +219,7 @@
      * Drawn last so they sit over the blocks: a heavy navy rule down the full
      * height of the grid, continued as a white rule through the day-name band.
      */
-    var gridEnd = bodyTop + U.SLOTS_PER_DAY * rowH;
+    var gridEnd = bodyTop + slotCount * rowH;
     for (var dv = 0; dv <= U.DAYS; dv++) {
       var x = margin + gutterW + colW * dv;
       pdf.setLineWidth(1.4);
@@ -218,8 +235,31 @@
     pdf.setDrawColor(NAVY[0], NAVY[1], NAVY[2]);
     pdf.line(margin + gutterW, gridEnd, pageW - margin, gridEnd);
 
+    /* ---- important notes ---- */
+    if (noteLines.length) {
+      var noteTop = gridEnd + 10;
+      pdf.setFillColor(252, 250, 247);
+      pdf.setDrawColor(NAVY[0], NAVY[1], NAVY[2]);
+      pdf.setLineWidth(0.5);
+      pdf.rect(margin, noteTop, pageW - margin * 2, noteH - 6, 'FD');
+      pdf.setFillColor(ORANGE[0], ORANGE[1], ORANGE[2]);
+      pdf.rect(margin, noteTop, 3, noteH - 6, 'F');
+
+      pdf.setFont('times', 'bold');
+      pdf.setFontSize(9.5);
+      pdf.setTextColor(0, 40, 85);
+      pdf.text('Important notes', margin + 9, noteTop + 11);
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
+      pdf.setTextColor(INK[0], INK[1], INK[2]);
+      noteLines.forEach(function (line, i) {
+        pdf.text(line, margin + 9, noteTop + 22 + i * 9);
+      });
+    }
+
     /* ---- footer: QR, url, legend ---- */
-    var footY = gridBottom + 12;
+    var footY = gridBottom + 12 + noteH;
     pdf.setDrawColor(RULE[0], RULE[1], RULE[2]);
     pdf.setLineWidth(0.6);
     pdf.line(margin, footY - 8, pageW - margin, footY - 8);
