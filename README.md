@@ -18,8 +18,9 @@ and post — with a QR code to tutor.com for the hours nobody is on shift.
 
 1. Open the site (or the single-file version) in any modern browser.
 2. Click **Load sample roster** to see how it works, or **Add tutor** to start your own.
-   The sample is ten tutors approved for 80 hours between them, none of them starting
-   before 9:00 AM.
+   The sample is ten tutors, each approved for 15 hours, who between them handed in 80
+   hours of availability — a couple offering the full 15, most a few afternoons, one or two
+   a single shift.
 3. For each tutor: first and last name, the class checkboxes, their approved weekly hours
    (15 by default), and their availability.
 4. Fill the week in whichever way suits you — see [Three ways to place a
@@ -86,6 +87,11 @@ The optimizer builds a first schedule greedily, then spends a couple of seconds 
 with simulated annealing. It runs in slices so the page never freezes, and **Cancel** works.
 
 ### Rules it will never break
+
+Approved hours and offered hours are different things. **Approved hours per week** is what the
+department allows — the same 15 for everyone in the sample. Availability is what that tutor
+handed in: which of those hours they actually want to work. A tutor is never scheduled beyond
+either one, and the hours they offered are hours the optimizer tries to use.
 
 | Rule | Default | Where to change it |
 |---|---|---|

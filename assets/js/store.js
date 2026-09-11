@@ -318,44 +318,38 @@
 
   var MON = 0, TUE = 1, WED = 2, THU = 3, FRI = 4;
 
-  /* Approved hours add up to 80 across the roster: the department pays for 80,
-   * so that is what the sample is willing to work. Each cap sits at or under
-   * that tutor's availability, so willing hours and approved hours are the
-   * same number and the roster is exactly the 80 it says it is. Nobody starts
-   * before 9:00 AM, which is the hour a centre like this actually opens.
+  /* Everyone is approved for the same 15 hours a week -- that is a department
+   * decision, not a personal one. What differs is availability, because these
+   * tutors are students first: a couple can offer the full 15, most offer a
+   * few afternoons around their own classes, and one or two can only manage a
+   * single shift. Eighty hours across the roster, nobody before 9:00 AM, and
+   * between them they cover 9:00 to 6:00 every day.
    */
   function sampleTutors() {
     return [
+      // 15 h -- available the full week they are approved for
       { firstName: 'Anna', lastName: 'Harden', subjects: { ap1: true, ap2: true },
-        maxHoursPerWeek: 8,
-        availability: availability([[[MON, WED, FRI], '12:00', '17:00']]) },
+        availability: availability([[[MON, WED, FRI], '09:00', '14:00']]) },
       { firstName: 'Marcus', lastName: 'Bell', subjects: { bio: true },
-        maxHoursPerWeek: 9,
-        availability: availability([[[MON, TUE, WED, THU], '09:00', '14:00']]) },
+        availability: availability([[[TUE, THU], '09:00', '14:00'], [[MON], '13:00', '18:00']]) },
+      // 6-10 h -- the usual case, two or three shifts around classes
       { firstName: 'Priya', lastName: 'Raman', subjects: { ap1: true, micro: true },
-        maxHoursPerWeek: 8,
-        availability: availability([[[TUE, THU], '13:00', '20:30']]) },
+        availability: availability([[[MON, WED], '14:00', '18:00'], [[FRI], '14:00', '16:00']]) },
       { firstName: 'Devon', lastName: 'Pierce', subjects: { ap1: true },
-        maxHoursPerWeek: 9,
-        availability: availability([[[MON, TUE, WED, THU, FRI], '15:00', '20:00']]) },
+        availability: availability([[[TUE, THU], '14:00', '18:00']]) },
       { firstName: 'Sofia', lastName: 'Marín', subjects: { bio: true, micro: true },
-        maxHoursPerWeek: 9,
-        availability: availability([[[MON, WED], '09:00', '14:00'], [[FRI], '09:00', '15:00']]) },
+        availability: availability([[[FRI], '09:00', '14:00'], [[WED], '15:00', '18:00']]) },
       { firstName: 'Jamal', lastName: 'Whitfield', subjects: { ap2: true },
-        maxHoursPerWeek: 6,
-        availability: availability([[[WED, THU], '16:00', '20:30']]) },
+        availability: availability([[[WED], '10:00', '14:00'], [[FRI], '14:00', '18:00']]) },
       { firstName: 'Hannah', lastName: 'Ochoa', subjects: { bio: true, ap1: true, ap2: true },
-        maxHoursPerWeek: 9,
-        availability: availability([[[TUE, WED, THU, FRI], '10:00', '16:00']]) },
+        availability: availability([[[TUE, THU], '12:00', '15:00']]) },
+      // 3-4 h -- one shift is all their own timetable leaves
       { firstName: 'Eli', lastName: 'Novak', subjects: { micro: true },
-        maxHoursPerWeek: 5,
-        availability: availability([[[MON, WED], '17:00', '20:30']]) },
+        availability: availability([[[MON, WED], '10:00', '12:00']]) },
       { firstName: 'Anna', lastName: 'Henry', subjects: { ap1: true, ap2: true, micro: true },
-        maxHoursPerWeek: 9,
-        availability: availability([[[MON, TUE, WED, THU, FRI], '09:00', '12:00']]) },
+        availability: availability([[[THU], '15:00', '18:00']]) },
       { firstName: 'Trent', lastName: 'Boyd', subjects: { bio: true, micro: true },
-        maxHoursPerWeek: 8,
-        availability: availability([[[TUE, THU, FRI], '14:00', '20:30']]) }
+        availability: availability([[[TUE], '15:00', '18:00']]) }
     ];
   }
 
@@ -363,6 +357,7 @@
     state = emptyState();
     sampleTutors().forEach(function (t, i) {
       t.colorIndex = i;
+      t.maxHoursPerWeek = 15;
       addTutor(t);
     });
     commit('sample');

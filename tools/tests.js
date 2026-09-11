@@ -55,6 +55,14 @@
     return null;
   }
 
+  // What a tutor is willing to work: the hours they handed in, capped by what
+  // they are approved for.
+  function willingHours(t) {
+    var n = 0;
+    for (var i = 0; i < t.availability.length; i++) n += t.availability[i] ? 1 : 0;
+    return Math.min(t.maxHoursPerWeek, n / 2);
+  }
+
   function dayRuns(state, tutorId, day) {
     var row = [];
     for (var s = 0; s < U.SLOTS_PER_DAY; s++) row.push(0);
@@ -244,14 +252,21 @@
       U.formatMinutes(U.slotStartMinutes(st.window.end)));
     r.ok(st.overCapacitySlots === 0, 'Config B: nothing exceeds two tutors at once');
 
-    var priya = tutorNamed(state, 'Priya');
-    var tueRuns = dayRuns(state, priya.id, 1);
-    var thuRuns = dayRuns(state, priya.id, 3);
+    // Checked across the roster rather than for one tutor on one day. Nobody in
+    // this fixture offers more than five unbroken hours, so the threshold is not
+    // pressed hard here; the fuzz pass is what leans on it, with random rosters
+    // and a break threshold that moves.
     var maxRun = Math.round(state.settings.breakAfterHours * 2) - 1;
-    r.ok(tueRuns.every(function (n) { return n <= maxRun; }),
-      'Config B: Priya never works past the break threshold on Tuesday', JSON.stringify(tueRuns));
-    r.ok(thuRuns.every(function (n) { return n <= maxRun; }),
-      'Config B: Priya never works past the break threshold on Thursday', JSON.stringify(thuRuns));
+    var overRun = [];
+    state.tutors.forEach(function (t) {
+      for (var d = 0; d < U.DAYS; d++) {
+        dayRuns(state, t.id, d).forEach(function (n) {
+          if (n > maxRun) overRun.push(t.firstName + ' ' + U.DAY_NAMES[d] + ' ' + (n / 2) + ' h');
+        });
+      }
+    });
+    r.eq(overRun.length, 0, 'Config B: nobody works past the break threshold on any day',
+      overRun.join(', '));
 
     var labels = U.displayNames(state.tutors);
     var harden = tutorNamed(state, 'Anna', 'Harden');
@@ -263,11 +278,12 @@
   }
 
   function testFixtureBudgetOn(r) {
-    var state = fixtureState({ budget: true, budgetHours: 80 });
+    // 70 h binds: the roster can reach 78 without one.
+    var state = fixtureState({ budget: true, budgetHours: 70 });
     state.assignments = TS.optimizer.optimize(state, { seed: 7, iterations: 90000 });
     var st = TS.optimizer.stats(state, state.assignments);
 
-    r.note('Config A (80 h budget): ' + st.totalHours.toFixed(1) + ' h, coverage ' +
+    r.note('Config A (70 h budget): ' + st.totalHours.toFixed(1) + ' h, coverage ' +
       st.coveredSlots + '/' + st.totalSlots + ', doubled ' + st.doubledHours.toFixed(1) +
       ' h, subjects/hour ' + st.avgSubjects.toFixed(2));
     r.note('  per tutor: ' + st.perTutor.map(function (p) {
@@ -277,25 +293,24 @@
     }).join(', '));
 
     checkSchedule(r, state, 'Config A');
-    r.ok(st.totalHours <= 80 + 1e-9, 'Config A: total stays inside the 80 hour budget',
+    r.ok(st.totalHours <= 70 + 1e-9, 'Config A: total stays inside the 70 hour budget',
       st.totalHours + ' h');
-    // One half hour on Friday evening has a single available tutor and no legal
-    // shift that reaches it, budget or no budget -- verified by raising the
-    // budget to 90 h and watching it stay open. The strict check lives on
-    // Config B, which has the hours to prove coverage is reachable.
     var gapsA = TS.optimizer.analyzeGaps(state, state.assignments);
-    r.ok(st.coveredSlots >= st.totalSlots - 1,
-      'Config A: at most one open half hour is left uncovered',
-      st.coveredSlots + '/' + st.totalSlots + ', gaps: ' + gapsA.map(function (g) {
+    r.eq(st.coveredSlots, st.totalSlots, 'Config A: every open half hour is still covered',
+      gapsA.map(function (g) {
         return U.DAY_NAMES[g.day] + ' ' + U.formatRange(g.start, g.end) + ' (' + g.reason + ')';
       }).join('; '));
-    r.ok(gapsA.every(function (g) { return g.reason !== 'unscheduled'; }),
-      'Config A: nothing is left open that a tutor could simply have been given');
-    r.ok(st.totalHours >= 79, 'Config A: the budget is actually spent', st.totalHours + ' h');
+    r.ok(st.totalHours >= 69, 'Config A: the budget is actually spent', st.totalHours + ' h');
 
-    var eli = tutorNamed(state, 'Eli');
-    var eliHours = st.perTutor.filter(function (p) { return p.id === eli.id; })[0].hours;
-    r.ok(eliHours <= 7, 'Config A: Eli cannot exceed his 7 available hours', eliHours + ' h');
+    // Approved hours are the same 15 for everyone; what each tutor is willing to
+    // work is the availability they handed in. Neither may be exceeded.
+    var beyond = st.perTutor.filter(function (p) {
+      var t = null;
+      for (var i = 0; i < state.tutors.length; i++) if (state.tutors[i].id === p.id) t = state.tutors[i];
+      return p.hours > willingHours(t);
+    });
+    r.eq(beyond.length, 0, 'Config A: nobody works hours they did not offer',
+      beyond.map(function (p) { return p.id + ' ' + p.hours + ' h'; }).join(', '));
 
     // Equity is soft, so this guards the shape of the result rather than an
     // exact split: nobody gets starved, and nobody hoovers up the budget.
@@ -304,27 +319,32 @@
     var highest = Math.max.apply(null, hours);
     r.ok(lowest >= 3, 'Config A: no tutor is starved of hours', 'lowest is ' + lowest + ' h');
     r.ok(highest <= 15, 'Config A: no tutor exceeds their cap', 'highest is ' + highest + ' h');
-    r.note('  spread ' + lowest + '-' + highest + ' h against an 8 h fair share');
+    r.note('  spread ' + lowest + '-' + highest + ' h against a 7 h fair share');
 
     return st;
   }
 
   function testCoverageBeatsDuplication(r) {
-    // Monday 3:00-5:00 PM only has Anna Harden and Devon free, and both are
-    // AP1. A correct optimizer still pairs them rather than leaving a hole.
+    // Tuesday noon to 2:00 PM is Marcus and Hannah, and both tutor Biology, so
+    // pairing them adds no subject the hour did not already have. A second
+    // tutor is still worth more than the duplication costs, so both go on.
     var state = fixtureState({ budget: false });
     state.assignments = TS.optimizer.optimize(state, { seed: 3, iterations: 60000 });
 
-    var covered = true;
-    for (var s = U.hhmmToSlot('15:00'); s < U.hhmmToSlot('17:00'); s++) {
+    var occupancy = [];
+    for (var s = U.hhmmToSlot('12:00'); s < U.hhmmToSlot('14:00'); s++) {
       var n = 0;
       for (var i = 0; i < state.assignments.length; i++) {
         var a = state.assignments[i];
-        if (a.day === 0 && a.startSlot <= s && a.endSlot > s) n++;
+        if (a.day === 1 && a.startSlot <= s && a.endSlot > s) n++;
       }
-      if (n === 0) covered = false;
+      occupancy.push(n);
     }
-    r.ok(covered, 'Monday 3-5 PM is staffed even though only two AP1 tutors are free');
+    r.ok(occupancy.every(function (n) { return n >= 1; }),
+      'Tuesday noon-2 PM is staffed', JSON.stringify(occupancy));
+    r.ok(occupancy.every(function (n) { return n >= 2; }),
+      'Tuesday noon-2 PM is doubled up even though both tutors offer the same subject',
+      JSON.stringify(occupancy));
   }
 
   /* ---- 5. randomized fuzz ------------------------------------------------ */
