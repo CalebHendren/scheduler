@@ -183,8 +183,9 @@ Two buttons, for two different needs:
 
 - **Print / Save as PDF** — the one to use for anything you hand out or post. It prints from a
   real HTML table with proper row and column headers, so the PDF Chrome and Edge produce has
-  selectable text, keeps its table structure, and carries a document language. One landscape
-  page for the grid, plus a plain-text listing of every shift.
+  selectable text, keeps its table structure, and carries a document language. Two pages: the
+  calendar, the notes, the QR code and the legend on page 1, and a plain-text listing of every
+  shift, in two columns, on page 2.
 - **Download PDF** — one click, no print dialog, drawn directly with jsPDF. Same landscape
   layout and real text (nothing is a screenshot), but jsPDF does not emit a tagged structure
   tree, so it is the convenience option rather than the accessible one.

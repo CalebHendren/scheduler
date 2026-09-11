@@ -114,7 +114,9 @@
       if (!dayBlocks.length) continue;
       any = true;
 
-      html += '<h3>' + U.DAY_NAMES[d] + '</h3><ul>';
+      // Each day is one unbreakable unit so a column never splits a heading
+      // from the shifts under it.
+      html += '<section class="pv-listing__day"><h3>' + U.DAY_NAMES[d] + '</h3><ul>';
       dayBlocks.forEach(function (a) {
         var tutor = TS.store.getTutor(a.tutorId);
         var mask = U.subjectMask(tutor.subjects);
@@ -122,7 +124,7 @@
           esc(U.formatRange(a.startSlot, a.endSlot)) + ' — ' +
           esc(U.maskToLabels(mask).join(', ') || 'no subjects assigned') + '</li>';
       });
-      html += '</ul>';
+      html += '</ul></section>';
     }
 
     if (!any) html += '<p>No shifts are scheduled yet.</p>';
