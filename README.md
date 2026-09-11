@@ -18,6 +18,7 @@ and post — with a QR code to tutor.com for the hours nobody is on shift.
 
 1. Open the site (or the single-file version) in any modern browser.
 2. Click **Load sample roster** to see how it works, or **Add tutor** to start your own.
+   The sample is ten tutors approved for 80 hours between them.
 3. For each tutor: first and last name, the class checkboxes, their approved weekly hours
    (15 by default), and their availability.
 4. Fill the week in whichever way suits you — see [Three ways to place a
@@ -171,7 +172,30 @@ Two buttons, for two different needs:
   tree, so it is the convenience option rather than the accessible one.
 
 Both are landscape US Letter. Printing always uses the light theme even if you are working in
-dark mode.
+dark mode. Both carry the semester, the location and contact, the QR code, a tutor legend, the
+important notes, and a plain-text listing of every shift.
+
+### What goes on the handout
+
+**Semester** and **Important notes** are both under **Schedule settings**. The notes print in a
+box under the grid — closure dates, the last day of tutoring, anything else people need to read
+off the wall. The default text is the fall 2026 closure schedule; edit it for your term.
+
+### The hours a schedule shows
+
+A schedule is drawn over the hours that are actually in play, never narrower than 9:00 AM to
+5:00 PM:
+
+- **While editing**, the grid covers 9-to-5 plus every hour any tutor is available, so there is
+  always somewhere to place a shift someone has offered to work.
+- **On the handout**, it covers 9-to-5 plus every hour actually scheduled. Nobody working before
+  9:00 means the PDF starts at 9:00, and the grid grows to fill the page rather than wasting a
+  third of it on empty early mornings.
+
+The underlying week still runs 7:00 AM to 8:30 PM — that is the range availability can be
+painted over, and the range a tutor can be scheduled in. Only the drawing narrows. Coverage and
+**Uncovered time** are reported over the same open hours, so an empty 7:00 AM nobody can work
+is not counted against you.
 
 ### Accessibility notes
 

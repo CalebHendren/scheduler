@@ -47,6 +47,10 @@ html, body {
   margin: 1px 0 0; font-family: Georgia, "Times New Roman", serif;
   font-size: 17pt; color: #002855;
 }
+.pv-term {
+  margin: 2px 0 0; font-family: Georgia, "Times New Roman", serif;
+  font-size: 12pt; font-weight: 700; color: #10305F;
+}
 .pv-subtitle { margin: 1px 0 0; font-size: 9pt; color: #3A4553; }
 .pv-where { margin: 2px 0 0; font-size: 9.5pt; font-weight: 700; }
 .pv-head__contact { text-align: right; font-size: 8.5pt; line-height: 1.35; }
@@ -98,6 +102,19 @@ html, body {
 .pv-table thead th.pv-dayend { border-right: 2.5pt solid #fff; }
 .pv-table .pv-time { border-right: 2.5pt solid #10305F; }
 .pv-day-alt.pv-empty { background: #F2F6FB; }
+
+/* ---- important notes --------------------------------------------------- */
+
+.pv-notes {
+  margin-top: 7px; padding: 5px 8px;
+  border: 1px solid #10305F; border-left: 4px solid #FE5000;
+  page-break-inside: avoid;
+}
+.pv-notes h2 {
+  font-family: Georgia, "Times New Roman", serif; font-size: 9.5pt;
+  margin: 0 0 1px; color: #002855;
+}
+.pv-notes p { margin: 0; font-size: 8.5pt; line-height: 1.35; }
 
 /* ---- footer ------------------------------------------------------------ */
 

@@ -9,8 +9,11 @@
   function defaultSettings() {
     return {
       title: 'Science Tutoring Schedule',
-      term: '',
+      term: 'Fall 2026',
       effective: '',
+      notes: 'No tutoring will be available September 7, October 5–11, or November 23–29, ' +
+        'or any time the IMC and/or campus is closed. The last day of tutoring for the fall ' +
+        'semester is December 10, 2026.',
       location: 'Student Success Center (IMC 270)',
       contactName: 'Caleb Hendren, MS',
       contactEmail: 'caleb.hendren@chattanoogastate.edu',
@@ -251,27 +254,42 @@
 
   var MON = 0, TUE = 1, WED = 2, THU = 3, FRI = 4;
 
+  /* Approved hours add up to 80 across the roster: the department pays for 80,
+   * so that is what the sample is willing to work. Each cap sits at or under
+   * that tutor's availability, so willing hours and approved hours are the
+   * same number and the roster is exactly the 80 it says it is.
+   */
   function sampleTutors() {
     return [
       { firstName: 'Anna', lastName: 'Harden', subjects: { ap1: true, ap2: true },
+        maxHoursPerWeek: 8,
         availability: availability([[[MON, WED, FRI], '12:00', '17:00']]) },
       { firstName: 'Marcus', lastName: 'Bell', subjects: { bio: true },
+        maxHoursPerWeek: 9,
         availability: availability([[[MON, TUE, WED, THU], '08:00', '13:00']]) },
       { firstName: 'Priya', lastName: 'Raman', subjects: { ap1: true, micro: true },
+        maxHoursPerWeek: 8,
         availability: availability([[[TUE, THU], '13:00', '20:30']]) },
       { firstName: 'Devon', lastName: 'Pierce', subjects: { ap1: true },
+        maxHoursPerWeek: 9,
         availability: availability([[[MON, TUE, WED, THU, FRI], '15:00', '20:00']]) },
       { firstName: 'Sofia', lastName: 'Marín', subjects: { bio: true, micro: true },
+        maxHoursPerWeek: 9,
         availability: availability([[[MON, WED], '07:00', '14:00'], [[FRI], '09:00', '15:00']]) },
       { firstName: 'Jamal', lastName: 'Whitfield', subjects: { ap2: true },
+        maxHoursPerWeek: 6,
         availability: availability([[[WED, THU], '16:00', '20:30']]) },
       { firstName: 'Hannah', lastName: 'Ochoa', subjects: { bio: true, ap1: true, ap2: true },
+        maxHoursPerWeek: 9,
         availability: availability([[[TUE, WED, THU, FRI], '10:00', '16:00']]) },
       { firstName: 'Eli', lastName: 'Novak', subjects: { micro: true },
+        maxHoursPerWeek: 5,
         availability: availability([[[MON, WED], '17:00', '20:30']]) },
       { firstName: 'Anna', lastName: 'Henry', subjects: { ap1: true, ap2: true, micro: true },
+        maxHoursPerWeek: 9,
         availability: availability([[[MON, TUE, WED, THU, FRI], '07:00', '12:00']]) },
       { firstName: 'Trent', lastName: 'Boyd', subjects: { bio: true, micro: true },
+        maxHoursPerWeek: 8,
         availability: availability([[[TUE, THU, FRI], '14:00', '20:30']]) }
     ];
   }
@@ -280,7 +298,6 @@
     state = emptyState();
     sampleTutors().forEach(function (t, i) {
       t.colorIndex = i;
-      t.maxHoursPerWeek = 15;
       addTutor(t);
     });
     commit('sample');

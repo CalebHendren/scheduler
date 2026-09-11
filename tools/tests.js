@@ -429,6 +429,37 @@
       'auto-fitting the same tutor twice does not double their hours', (hours / 2) + ' h');
   }
 
+  function testScheduleWindow(r) {
+    function label(w) {
+      return U.formatMinutes(U.slotStartMinutes(w.start)) + '-' + U.formatMinutes(U.slotStartMinutes(w.end));
+    }
+    function tutorFree(day, from, to) {
+      var a = new Array(U.TOTAL_SLOTS);
+      for (var i = 0; i < U.TOTAL_SLOTS; i++) a[i] = 0;
+      for (var s = from; s < to; s++) a[U.idx(day, s)] = 1;
+      return { availability: a };
+    }
+    var CORE = '9:00 AM-5:00 PM';
+
+    r.eq(label(U.scheduleWindow([])), CORE, 'an empty schedule still shows the 9-to-5 core');
+    r.eq(label(U.scheduleWindow([{ day: 0, startSlot: 6, endSlot: 16 }])), CORE,
+      'a schedule inside 9-to-5 does not shrink below it');
+    r.eq(label(U.scheduleWindow([{ day: 0, startSlot: 1, endSlot: 6 }])), '7:30 AM-5:00 PM',
+      'an early shift opens the top of the grid');
+    r.eq(label(U.scheduleWindow([{ day: 4, startSlot: 20, endSlot: 27 }])), '9:00 AM-8:30 PM',
+      'a late shift opens the bottom of the grid');
+
+    // The editor has to offer the hours a tutor is free for, even before any
+    // shift is placed there; the printed schedule does not.
+    var early = [tutorFree(2, 0, 4)];
+    r.eq(label(U.editorWindow(early, [])), '7:00 AM-5:00 PM',
+      'the editor opens up for availability outside the core');
+    r.eq(label(U.scheduleWindow([])), CORE,
+      'the printed window ignores availability nobody is working');
+    r.eq(label(U.editorWindow([tutorFree(1, 8, 14)], [])), CORE,
+      'availability inside the core leaves the editor at 9-to-5');
+  }
+
   function testEmptyRoster(r) {
     var state = TS.store.emptyState();
     var result = TS.optimizer.optimize(state, { iterations: 500 });
@@ -442,6 +473,7 @@
     var started = Date.now();
 
     testDisplayNames(r);
+    testScheduleWindow(r);
     testContrast(r);
     testCsv(r);
     testEmptyRoster(r);

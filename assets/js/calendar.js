@@ -6,6 +6,7 @@
 
   var onChangeCb = null;
   var onNoticeCb = null;
+  var viewStart = 0;   // first slot the grid is currently drawing, set by render
 
   function rowHeight(container) {
     var v = root.getComputedStyle(container).getPropertyValue('--row-h');
@@ -145,11 +146,14 @@
     var counts = occupancy(state.assignments);
     var selected = (options && options.selectedTutorId)
       ? TS.store.getTutor(options.selectedTutorId) : null;
+    var win = U.editorWindow(state.tutors, state.assignments);
+    var rows = win.end - win.start;
 
     container.setAttribute('data-drawing', selected ? '1' : '0');
+    viewStart = win.start;
 
     container.innerHTML = '';
-    container.style.setProperty('--rows', U.SLOTS_PER_DAY);
+    container.style.setProperty('--rows', rows);
 
     var head = doc.createElement('div');
     head.className = 'calendar__head calendar__head--gutter';
@@ -165,16 +169,16 @@
 
     var gutter = doc.createElement('div');
     gutter.className = 'calendar__gutter';
-    gutter.style.height = (U.SLOTS_PER_DAY * rh) + 'px';
-    for (var s = 0; s <= U.SLOTS_PER_DAY; s++) {
-      if (U.slotStartMinutes(s) % 60 !== 0 && s !== U.SLOTS_PER_DAY) continue;
+    gutter.style.height = (rows * rh) + 'px';
+    for (var s = win.start; s <= win.end; s++) {
+      if (U.slotStartMinutes(s) % 60 !== 0 && s !== win.end) continue;
       var tick = doc.createElement('span');
       tick.className = 'calendar__tick';
-      tick.style.top = (s * rh) + 'px';
+      tick.style.top = ((s - win.start) * rh) + 'px';
       // The end labels sit inside the grid instead of straddling its edge, so
       // neither is clipped by the pinned day names or the bottom of the box.
-      if (s === 0) tick.style.transform = 'translateY(1px)';
-      else if (s === U.SLOTS_PER_DAY) tick.style.transform = 'translateY(-100%)';
+      if (s === win.start) tick.style.transform = 'translateY(1px)';
+      else if (s === win.end) tick.style.transform = 'translateY(-100%)';
       tick.textContent = U.formatMinutes(U.slotStartMinutes(s));
       gutter.appendChild(tick);
     }
@@ -184,7 +188,7 @@
       var col = doc.createElement('div');
       col.className = 'calendar__day';
       col.setAttribute('data-day', d);
-      col.style.height = (U.SLOTS_PER_DAY * rh) + 'px';
+      col.style.height = (rows * rh) + 'px';
 
       var dayBlocks = state.assignments.filter(function (a) { return a.day === d; });
       var placement = layoutDay(dayBlocks);
@@ -193,13 +197,13 @@
       // it is obvious where a new shift is allowed to land before the drag.
       if (selected) {
         var availStart = null;
-        for (var av = 0; av <= U.SLOTS_PER_DAY; av++) {
-          var free = av < U.SLOTS_PER_DAY && selected.availability[U.idx(d, av)];
+        for (var av = win.start; av <= win.end; av++) {
+          var free = av < win.end && selected.availability[U.idx(d, av)];
           if (free && availStart === null) availStart = av;
           else if (!free && availStart !== null) {
             var band = doc.createElement('div');
             band.className = 'availband';
-            band.style.top = (availStart * rh) + 'px';
+            band.style.top = ((availStart - win.start) * rh) + 'px';
             band.style.height = ((av - availStart) * rh) + 'px';
             col.appendChild(band);
             availStart = null;
@@ -210,13 +214,13 @@
       // Over-capacity bands sit under the blocks so the stripe reads as a
       // property of the time, not of any one tutor.
       var bandStart = null;
-      for (var bs = 0; bs <= U.SLOTS_PER_DAY; bs++) {
-        var over = bs < U.SLOTS_PER_DAY && counts[U.idx(d, bs)] > state.settings.maxConcurrent;
+      for (var bs = win.start; bs <= win.end; bs++) {
+        var over = bs < win.end && counts[U.idx(d, bs)] > state.settings.maxConcurrent;
         if (over && bandStart === null) bandStart = bs;
         else if (!over && bandStart !== null) {
           var stripe = doc.createElement('div');
           stripe.className = 'overband';
-          stripe.style.top = (bandStart * rh) + 'px';
+          stripe.style.top = ((bandStart - win.start) * rh) + 'px';
           stripe.style.height = ((bs - bandStart) * rh) + 'px';
           col.appendChild(stripe);
           bandStart = null;
@@ -224,14 +228,14 @@
       }
 
       dayBlocks.forEach(function (a) {
-        col.appendChild(buildBlock(a, state, labels, placement[a.id], rh, dark, counts));
+        col.appendChild(buildBlock(a, state, labels, placement[a.id], rh, dark, win));
       });
 
       container.appendChild(col);
     }
   }
 
-  function buildBlock(a, state, labels, place, rh, dark, counts) {
+  function buildBlock(a, state, labels, place, rh, dark, win) {
     var tutor = TS.store.getTutor(a.tutorId);
     var colors = U.blockColors(tutor.colorIndex, dark);
     var mask = U.subjectMask(tutor.subjects);
@@ -251,7 +255,7 @@
     if (U.usesHatch(tutor.colorIndex)) node.setAttribute('data-hatch', '1');
     if (len <= 2) node.setAttribute('data-short', '1');
 
-    node.style.top = (a.startSlot * rh + 1) + 'px';
+    node.style.top = ((a.startSlot - win.start) * rh + 1) + 'px';
     node.style.height = (len * rh - 3) + 'px';
     node.style.left = 'calc(' + (lane / lanes * 100) + '% + 2px)';
     node.style.width = 'calc(' + (100 / lanes) + '% - 4px)';
@@ -299,12 +303,13 @@
 
     function slotAt(colEl, clientY, rh) {
       var top = colEl.getBoundingClientRect().top;
-      return Math.max(0, Math.min(U.SLOTS_PER_DAY, Math.floor((clientY - top) / rh)));
+      var slot = viewStart + Math.floor((clientY - top) / rh);
+      return Math.max(viewStart, Math.min(U.SLOTS_PER_DAY, slot));
     }
 
     function paintGhost() {
       if (!draw) return;
-      draw.ghost.style.top = (draw.start * draw.rh + 1) + 'px';
+      draw.ghost.style.top = ((draw.start - viewStart) * draw.rh + 1) + 'px';
       draw.ghost.style.height = ((draw.end - draw.start) * draw.rh - 3) + 'px';
       draw.ghost.textContent = U.formatRange(draw.start, draw.end);
     }
@@ -394,7 +399,7 @@
         start: start,
         end: end
       };
-      drag.el.style.top = (start * drag.rh + 1) + 'px';
+      drag.el.style.top = ((start - viewStart) * drag.rh + 1) + 'px';
       drag.el.style.height = ((end - start) * drag.rh - 3) + 'px';
     });
 

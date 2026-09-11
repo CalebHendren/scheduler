@@ -404,8 +404,10 @@
 
   var SETTING_FIELDS = [
     { key: 'title', label: 'Schedule title', type: 'text' },
-    { key: 'term', label: 'Term', type: 'text', placeholder: 'Fall 2026' },
+    { key: 'term', label: 'Semester', type: 'text', placeholder: 'Fall 2026' },
     { key: 'effective', label: 'Effective dates', type: 'text', placeholder: 'Aug 24 – Dec 11' },
+    { key: 'notes', label: 'Important notes', type: 'textarea',
+      placeholder: 'Closures, the last day of tutoring, anything else on the handout' },
     { key: 'location', label: 'Location', type: 'text' },
     { key: 'contactName', label: 'Contact name', type: 'text' },
     { key: 'contactEmail', label: 'Contact email', type: 'email' },
@@ -428,9 +430,14 @@
     var html = '';
 
     SETTING_FIELDS.forEach(function (f) {
+      var ph = f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '';
       html += '<div class="field"><label for="set-' + f.key + '">' + esc(f.label) + '</label>' +
-        '<input type="' + f.type + '" id="set-' + f.key + '" data-setting="' + f.key + '" value="' +
-        esc(s[f.key]) + '"' + (f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '') + '></div>';
+        (f.type === 'textarea'
+          ? '<textarea id="set-' + f.key + '" data-setting="' + f.key + '" rows="4"' + ph + '>' +
+              esc(s[f.key]) + '</textarea>'
+          : '<input type="' + f.type + '" id="set-' + f.key + '" data-setting="' + f.key +
+              '" value="' + esc(s[f.key]) + '"' + ph + '>') +
+        '</div>';
     });
 
     html += '<fieldset><legend>Scheduling rules</legend><div class="grid-2">';

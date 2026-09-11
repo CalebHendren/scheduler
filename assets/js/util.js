@@ -25,6 +25,48 @@
     '#56B4E9', '#CC79A7', '#999933', '#6E6E6E'
   ];
 
+  // The day is modelled 7:00 AM to 8:30 PM because someone may be available
+  // then, but a schedule is drawn over the hours actually in play, never
+  // narrower than the 9-to-5 core it is expected to look like.
+  var CORE_START_SLOT = 4;         // 9:00 AM
+  var CORE_END_SLOT = 20;          // 5:00 PM
+
+  function clampWindow(start, end) {
+    return {
+      start: Math.max(0, Math.min(CORE_START_SLOT, start)),
+      end: Math.min(SLOTS_PER_DAY, Math.max(CORE_END_SLOT, end))
+    };
+  }
+
+  // What the finished schedule occupies: what the handout and the PDF draw.
+  function scheduleWindow(assignments) {
+    var start = CORE_START_SLOT, end = CORE_END_SLOT;
+    (assignments || []).forEach(function (a) {
+      if (a.startSlot < start) start = a.startSlot;
+      if (a.endSlot > end) end = a.endSlot;
+    });
+    return clampWindow(start, end);
+  }
+
+  // The same, widened to every hour anyone is available, so the editing grid
+  // always has somewhere to put a shift a tutor has offered to work.
+  function editorWindow(tutors, assignments) {
+    var w = scheduleWindow(assignments);
+    var start = w.start, end = w.end;
+    (tutors || []).forEach(function (t) {
+      if (!t || !t.availability) return;
+      for (var d = 0; d < DAYS; d++) {
+        for (var s = 0; s < start; s++) {
+          if (t.availability[idx(d, s)]) { start = s; break; }
+        }
+        for (var e = SLOTS_PER_DAY; e > end; e--) {
+          if (t.availability[idx(d, e - 1)]) { end = e; break; }
+        }
+      }
+    });
+    return clampWindow(start, end);
+  }
+
   function idx(day, slot) { return day * SLOTS_PER_DAY + slot; }
   function slotStartMinutes(slot) { return DAY_START_MIN + slot * SLOT_MINUTES; }
   function slotEndMinutes(slot) { return DAY_START_MIN + (slot + 1) * SLOT_MINUTES; }
@@ -237,6 +279,10 @@
     SLOTS_PER_DAY: SLOTS_PER_DAY,
     DAYS: DAYS,
     TOTAL_SLOTS: TOTAL_SLOTS,
+    CORE_START_SLOT: CORE_START_SLOT,
+    CORE_END_SLOT: CORE_END_SLOT,
+    scheduleWindow: scheduleWindow,
+    editorWindow: editorWindow,
     DAY_NAMES: DAY_NAMES,
     DAY_ABBR: DAY_ABBR,
     SUBJECTS: SUBJECTS,
