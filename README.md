@@ -12,8 +12,6 @@ and post — with a QR code to tutor.com for the hours nobody is on shift.
 **Offline version:** download `scheduler-local.html` from the
 [latest release](https://github.com/CalebHendren/scheduler/releases) — one file, no install.
 
-Contact: Caleb Hendren, MS · caleb.hendren@chattanoogastate.edu
-
 ---
 
 ## Getting started
