@@ -24,8 +24,8 @@ Contact: Caleb Hendren, MS · caleb.hendren@chattanoogastate.edu
    (15 by default), and their availability.
 4. Fill the week in whichever way suits you — see [Three ways to place a
    shift](#three-ways-to-place-a-shift).
-5. Adjust by hand — drag a block to move it, drag its edge to resize, double-click
-   to lock it so re-optimizing leaves it alone.
+5. Adjust by hand — drag a block to move it, drag its edge to resize, lock the ones
+   that are settled.
 6. **Print / Save as PDF** for the handout.
 
 There is no account and no server. Everything stays in your browser.
@@ -47,6 +47,20 @@ Auto-optimize is one option, not the only one. Nothing here needs it.
 - **The whole week at once.** **Auto-optimize** rebuilds the entire schedule from scratch.
   Locked shifts survive it; everything else is fair game, so it is the wrong button to press
   once people have been told what they are working.
+
+## Locking
+
+A locked shift is never moved, resized or removed by **Auto-optimize**, **Auto-fit** or
+**Clear schedule**. Lock the parts of the week that are settled and the buttons stay safe to
+press.
+
+- **One shift** — hover it and click the padlock in its corner, double-click it, or press `L`
+  while it is focused. Locked shifts wear a dashed border and keep their padlock showing.
+- **One tutor** — **Lock all** on their roster row, for the person whose hours are agreed
+  while the rest of the week is still moving.
+- **Everything** — **Lock all shifts** in the toolbar, once the week is finished.
+
+Each button turns into its own undo (**Unlock all**) when everything under it is locked.
 
 ## How the schedule is built
 
@@ -169,7 +183,8 @@ dark mode.
 - Beyond eight tutors, colors repeat with a diagonal hatch so the repeated pair stays distinct.
 - The whole app is keyboard operable. In the availability painter, move with the arrow keys and
   toggle with Space. On a scheduled block, arrow keys move it, Shift+arrows resize it, `L`
-  locks it and Delete removes it.
+  locks it and Delete removes it; Tab from the block reaches its padlock. Placing a shift
+  without a mouse is what **Add shift** above the grid is for.
 - Text contrast is checked automatically in CI, in both light and dark themes, for every color
   in the palette.
 

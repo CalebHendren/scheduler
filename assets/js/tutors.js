@@ -118,6 +118,17 @@
       }, 'Auto-fit');
       fit.addEventListener('click', function () { handlers.onFit(t.id); });
 
+      var shifts = TS.store.state.assignments.filter(function (a) { return a.tutorId === t.id; });
+      var allLocked = shifts.length > 0 && shifts.every(function (a) { return a.locked; });
+      var lock = el('button', {
+        type: 'button', class: 'btn btn--small',
+        'aria-pressed': allLocked ? 'true' : 'false',
+        disabled: shifts.length ? null : 'disabled',
+        'aria-label': (allLocked ? 'Unlock all ' : 'Lock all ') + shifts.length +
+          ' shift(s) for ' + full
+      }, allLocked ? 'Unlock all' : 'Lock all');
+      lock.addEventListener('click', function () { handlers.onLockAll(t.id, !allLocked); });
+
       var edit = el('button', { type: 'button', class: 'btn btn--small' }, 'Edit');
       edit.addEventListener('click', function () { handlers.onEdit(t.id); });
       var del = el('button', {
@@ -128,6 +139,7 @@
 
       actions.appendChild(pick);
       actions.appendChild(fit);
+      actions.appendChild(lock);
       actions.appendChild(edit);
       actions.appendChild(del);
       row.appendChild(actions);

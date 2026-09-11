@@ -110,6 +110,15 @@
     }).join('');
   }
 
+  function renderLockAll(state) {
+    var btn = $('btn-lock-all');
+    var shifts = state.assignments;
+    var allLocked = shifts.length > 0 && shifts.every(function (a) { return a.locked; });
+    btn.textContent = allLocked ? 'Unlock all shifts' : 'Lock all shifts';
+    btn.setAttribute('aria-pressed', allLocked ? 'true' : 'false');
+    btn.disabled = !shifts.length;
+  }
+
   function renderCalendarHint(state) {
     var hint = $('calendar-hint');
     var tutor = selectedTutorId ? TS.store.getTutor(selectedTutorId) : null;
@@ -119,6 +128,7 @@
         'shaded column to place one. Esc when you are done.';
     } else {
       hint.textContent = 'Drag a block to move it, drag its edge to resize. ' +
+        'Double-click a block or press L to lock it. ' +
         'Pick a tutor’s “Add shifts” to draw new ones.';
     }
   }
@@ -132,10 +142,12 @@
       onRemove: removeTutor,
       onFit: fitTutor,
       onSelect: selectTutor,
+      onLockAll: lockAllFor,
       selectedId: selectedTutorId
     });
     TS.calendar.render($('calendar'), state, { selectedTutorId: selectedTutorId });
     renderCalendarHint(state);
+    renderLockAll(state);
     renderStats(state);
     renderGaps(state);
     TS.printview.render($('print-view'), state);
@@ -187,6 +199,43 @@
   }
 
   /* ---- building by hand -------------------------------------------------- */
+
+  // Locking the finished week, so Auto-optimize and Clear schedule can both be
+  // pressed without putting anything at risk.
+  function lockEverything() {
+    var shifts = TS.store.state.assignments;
+    if (!shifts.length) return;
+    var lock = !shifts.every(function (a) { return a.locked; });
+    var n = 0;
+    shifts.forEach(function (a) {
+      if (a.locked === lock) return;
+      a.locked = lock;
+      n++;
+    });
+    if (!n) return;
+    TS.store.commit('lock-all');
+    notice(lock
+      ? 'All ' + shifts.length + ' shifts are locked. Auto-optimize and Clear schedule will ' +
+        'both leave them alone.'
+      : 'All shifts unlocked.', 'info');
+  }
+
+  // Locking a whole tutor at once: the usual case is one person whose hours are
+  // already settled while the rest of the week is still moving.
+  function lockAllFor(id, locked) {
+    var tutor = TS.store.getTutor(id);
+    if (!tutor) return;
+    var n = 0;
+    TS.store.state.assignments.forEach(function (a) {
+      if (a.tutorId !== id || a.locked === locked) return;
+      a.locked = locked;
+      n++;
+    });
+    if (!n) return;
+    TS.store.commit('lock-tutor');
+    notice(n + ' shift(s) ' + (locked ? 'locked' : 'unlocked') + ' for ' + tutor.firstName +
+      (locked ? '. Auto-optimize will work around them.' : '.'), 'info');
+  }
 
   function selectTutor(id) {
     selectedTutorId = selectedTutorId === id ? null : id;
@@ -498,6 +547,7 @@
     $('btn-optimize').addEventListener('click', optimize);
     $('btn-cancel').addEventListener('click', cancelOptimize);
     $('btn-add-tutor').addEventListener('click', addTutor);
+    $('btn-lock-all').addEventListener('click', lockEverything);
 
     $('btn-clear').addEventListener('click', function () {
       var kept = TS.store.state.assignments.filter(function (a) { return a.locked; });

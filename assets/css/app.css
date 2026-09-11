@@ -233,9 +233,10 @@ legend { font-weight: 700; font-size: 13px; padding: 0 5px; }
   margin-bottom: 18px;
 }
 .panel__head {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
   padding: 12px 14px; border-bottom: 1px solid var(--border);
 }
+.panel__head .field__hint { margin: 0; text-align: right; }
 .panel__head h2 { font-size: 17px; }
 .panel__body { padding: 14px; }
 .panel__body--flush { padding: 0; }
@@ -347,7 +348,22 @@ legend { font-weight: 700; font-size: 13px; padding: 0 5px; }
 .block__name { font-weight: 700; display: block; }
 .block__time { display: block; font-size: 11px; opacity: .85; font-variant-numeric: tabular-nums; }
 .block__subjects { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .03em; margin-top: 1px; }
-.block__lock { position: absolute; top: 2px; right: 3px; font-size: 10px; }
+/* The padlock shows on a locked block, and otherwise only while the block is
+   hovered or focused -- an unlocked week carries no icons at all. Hidden by
+   visibility, so an invisible control is never in the way of a click; a block
+   takes focus before its lock button, which is what puts it in reach of Tab. */
+.block__lock {
+  position: absolute; top: 1px; right: 1px;
+  border: 0; background: none; padding: 1px 2px;
+  font-size: 11px; line-height: 1; cursor: pointer;
+  visibility: hidden;
+}
+.block:hover .block__lock,
+.block:focus-visible .block__lock,
+.block:focus-within .block__lock,
+.block[data-locked="1"] .block__lock { visibility: visible; }
+.block[data-locked="1"] { border-style: dashed; }
+.block__lock:focus-visible { outline: 2px solid var(--brand-orange); outline-offset: 1px; }
 .block[data-hatch="1"] {
   background-image: repeating-linear-gradient(
     45deg, rgba(0, 0, 0, .13) 0 4px, transparent 4px 9px

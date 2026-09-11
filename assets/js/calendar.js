@@ -243,8 +243,11 @@
     var node = doc.createElement('div');
     node.className = 'block';
     node.setAttribute('data-id', a.id);
-    node.setAttribute('role', 'button');
+    // A group rather than a button: the block holds the lock control, and a
+    // button is not allowed to contain another one.
+    node.setAttribute('role', 'group');
     node.setAttribute('tabindex', '0');
+    if (a.locked) node.setAttribute('data-locked', '1');
     if (U.usesHatch(tutor.colorIndex)) node.setAttribute('data-hatch', '1');
     if (len <= 2) node.setAttribute('data-short', '1');
 
@@ -268,8 +271,12 @@
 
     node.innerHTML =
       '<span class="block__handle block__handle--top" data-edge="start"></span>' +
-      '<span class="block__name">' + TS.tutors.esc(labels[tutor.id]) +
-        (a.locked ? ' <span class="block__lock" aria-hidden="true">🔒</span>' : '') + '</span>' +
+      '<button type="button" class="block__lock" data-lock="1" aria-pressed="' +
+        (a.locked ? 'true' : 'false') + '" aria-label="' +
+        (a.locked ? 'Unlock' : 'Lock') + ' ' + TS.tutors.esc(full) + ', ' +
+        U.DAY_NAMES[a.day] + ' ' + TS.tutors.esc(range) + '">' +
+        (a.locked ? '🔒' : '🔓') + '</button>' +
+      '<span class="block__name">' + TS.tutors.esc(labels[tutor.id]) + '</span>' +
       '<span class="block__time">' + TS.tutors.esc(range) + '</span>' +
       '<span class="block__subjects">' + (shorts.join(' · ') || '—') + '</span>' +
       '<span class="block__handle block__handle--bottom" data-edge="end"></span>';
@@ -327,7 +334,19 @@
       paintGhost();
     }
 
+    container.addEventListener('click', function (e) {
+      if (!e.target.closest('.block__lock')) return;
+      var a = TS.store.getAssignment(e.target.closest('.block').getAttribute('data-id'));
+      if (!a) return;
+      a.locked = !a.locked;
+      TS.store.commit('lock');
+      notice(a.locked
+        ? 'Shift locked. Auto-optimize will leave it exactly where it is.'
+        : 'Shift unlocked.', 'info');
+    });
+
     container.addEventListener('mousedown', function (e) {
+      if (e.target.closest('.block__lock')) return;
       var blockEl = e.target.closest('.block');
       if (!blockEl) { startDraw(e); return; }
       var state = getState();
@@ -406,7 +425,9 @@
         e.preventDefault();
         a.locked = !a.locked;
         TS.store.commit('lock');
-        notice(a.locked ? 'Shift locked. Auto-optimize will leave it alone.' : 'Shift unlocked.', 'info');
+        notice(a.locked
+        ? 'Shift locked. Auto-optimize will leave it exactly where it is.'
+        : 'Shift unlocked.', 'info');
         return;
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -437,6 +458,7 @@
     });
 
     container.addEventListener('dblclick', function (e) {
+      if (e.target.closest('.block__lock')) return;   // the button already toggled
       var blockEl = e.target.closest('.block');
       if (!blockEl) return;
       var a = TS.store.getAssignment(blockEl.getAttribute('data-id'));
