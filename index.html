@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tutor Schedule — Chattanooga State</title>
+<meta name="description" content="Weekly science tutoring schedule builder for Chattanooga State Community College.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2310305F'/%3E%3Cpath d='M7 11h18M7 16h18M7 21h11' stroke='%23FE5000' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="stylesheet" href="assets/css/print.css" media="print">
+</head>
+<body>
+<a class="skip-link" href="#calendar-panel">Skip to the schedule</a>
+
+<header class="app-header">
+  <div class="app-header__inner">
+    <div class="app-header__brand">
+      <span class="app-header__college">Chattanooga State Community College</span>
+      <h1 class="app-header__title" id="app-title">Science Tutoring Schedule</h1>
+    </div>
+    <div class="app-header__meta">
+      <div id="header-location">Student Success Center (IMC 270)</div>
+      <div>
+        <span id="header-contact">Caleb Hendren, MS</span> ·
+        <a id="header-email" href="mailto:caleb.hendren@chattanoogastate.edu">caleb.hendren@chattanoogastate.edu</a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="toolbar__inner">
+    <button type="button" class="btn btn--primary" id="btn-optimize">Auto-optimize</button>
+    <button type="button" class="btn" id="btn-cancel" hidden>Cancel</button>
+    <button type="button" class="btn" id="btn-clear">Clear schedule</button>
+    <button type="button" class="btn" id="btn-print">Print / Save as PDF</button>
+    <button type="button" class="btn" id="btn-pdf">Download PDF</button>
+
+    <div class="toolbar__spacer"></div>
+
+    <div class="stats" id="stats" role="status" aria-live="polite"></div>
+
+    <div class="field--inline">
+      <label for="theme-select">Theme</label>
+      <select id="theme-select" style="width:auto">
+        <option value="system">System</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </div>
+
+    <div class="progress" id="progress" data-active="false">
+      <div class="progress__track"><div class="progress__bar" id="progress-bar"></div></div>
+      <span id="progress-text">Optimizing…</span>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+  <aside>
+    <section class="panel" aria-labelledby="tutors-heading">
+      <div class="panel__head">
+        <h2 id="tutors-heading">Tutors</h2>
+        <div class="toolbar__spacer"></div>
+        <button type="button" class="btn btn--small btn--primary" id="btn-add-tutor">Add tutor</button>
+      </div>
+      <div class="panel__body--flush">
+        <ul class="roster" id="roster"></ul>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="data-heading">
+      <div class="panel__head"><h2 id="data-heading">Save &amp; share</h2></div>
+      <div class="panel__body">
+        <p class="field__hint" style="margin-top:0" id="save-hint">
+          Your work saves automatically in this browser. Export a file to move it to another
+          computer or to keep a backup.
+        </p>
+        <div class="field">
+          <label>Whole schedule</label>
+          <button type="button" class="btn btn--small" id="btn-export-json">Export JSON</button>
+          <button type="button" class="btn btn--small" id="btn-import-json">Import JSON</button>
+        </div>
+        <div class="field">
+          <label>Tutor roster (spreadsheet)</label>
+          <button type="button" class="btn btn--small" id="btn-export-csv">Export CSV</button>
+          <button type="button" class="btn btn--small" id="btn-import-csv">Import CSV</button>
+          <button type="button" class="btn btn--small btn--quiet" id="btn-template-csv">Template</button>
+          <p class="field__hint">
+            Opens in Excel or Sheets. Availability reads like
+            <code>Mon/Wed/Fri 12:00-17:00</code>.
+          </p>
+        </div>
+        <div class="field">
+          <button type="button" class="btn btn--small" id="btn-sample">Load sample roster</button>
+          <button type="button" class="btn btn--small btn--danger" id="btn-reset">Start over</button>
+        </div>
+        <input type="file" id="file-input" accept=".json,.csv,text/csv,application/json" class="visually-hidden">
+      </div>
+    </section>
+
+    <section class="panel">
+      <details class="settings" id="settings-details">
+        <summary>Schedule settings</summary>
+        <div class="panel__body" id="settings-body"></div>
+      </details>
+    </section>
+  </aside>
+
+  <main id="calendar-panel">
+    <div id="messages" aria-live="polite"></div>
+
+    <section class="panel" aria-labelledby="calendar-heading">
+      <div class="panel__head">
+        <h2 id="calendar-heading">Weekly schedule</h2>
+        <button type="button" class="btn btn--small" id="btn-add-shift">Add shift</button>
+        <div class="toolbar__spacer"></div>
+        <span class="field__hint" id="calendar-hint">Drag a block to move it, drag its edge to resize.</span>
+      </div>
+      <div class="calendar-wrap">
+        <div class="calendar-min">
+          <div class="calendar" id="calendar"></div>
+        </div>
+      </div>
+      <div class="schedule-foot">
+        <div id="qr-holder"></div>
+        <div class="schedule-foot__text">
+          <div><strong>Need help outside these hours?</strong></div>
+          <div id="qr-caption">Free 24/7 online tutoring</div>
+          <div class="schedule-foot__url" id="qr-url">https://www.tutor.com</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="gaps-heading">
+      <div class="panel__head"><h2 id="gaps-heading">Uncovered time</h2></div>
+      <div class="panel__body"><ul class="gaps" id="gaps"></ul></div>
+    </section>
+  </main>
+</div>
+
+<!-- Rendered from the same state, shown only on paper: a real table so the
+     PDF comes out tagged and navigable. -->
+<div class="print-only" id="print-view"></div>
+
+<div id="dialog-root"></div>
+
+<script src="assets/js/vendor/qrcode.js"></script>
+<script src="assets/js/vendor/jspdf.umd.min.js"></script>
+<script src="assets/js/util.js"></script>
+<script src="assets/js/store.js"></script>
+<script src="assets/js/csv.js"></script>
+<script src="assets/js/optimizer.js"></script>
+<script src="assets/js/theme.js"></script>
+<script src="assets/js/qr.js"></script>
+<script src="assets/js/tutors.js"></script>
+<script src="assets/js/calendar.js"></script>
+<script src="assets/js/printview.js"></script>
+<script src="assets/js/pdf.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
