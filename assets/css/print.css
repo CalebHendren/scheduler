@@ -103,6 +103,26 @@ html, body {
 .pv-table .pv-time { border-right: 2.5pt solid #10305F; }
 .pv-day-alt.pv-empty { background: #F2F6FB; }
 
+/* ---- away from the center ----------------------------------------------
+   A footnote band, not a second table: the entries run inline so the whole
+   thing costs one or two lines of the page-one budget. */
+
+.pv-offroom {
+  margin-top: 4px; padding: 3px 7px;
+  border: 1px solid #10305F; border-left: 4px solid #0072B2;
+  page-break-inside: avoid;
+}
+.pv-offroom h2 {
+  display: inline; font-family: Georgia, "Times New Roman", serif;
+  font-size: 8.5pt; color: #002855; margin-right: .35em;
+}
+.pv-offroom h2::after { content: ":"; }
+.pv-offroom ul {
+  display: inline; list-style: none; margin: 0; padding: 0; font-size: 7.5pt;
+}
+.pv-offroom li { display: inline; }
+.pv-offroom li + li::before { content: " · "; font-weight: 700; }
+
 /* ---- important notes --------------------------------------------------- */
 
 .pv-notes {

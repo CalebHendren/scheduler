@@ -54,10 +54,15 @@
     return placement;
   }
 
+  /* How many tutors are at the tutoring center at each half hour. Embedded
+   * classes and open labs are somewhere else on campus, so they are not in
+   * this count: a floating tutor across the hall does not use up a seat at the
+   * center, and a second tutor can still be scheduled there.
+   */
   function occupancy(assignments) {
     var counts = new Array(U.TOTAL_SLOTS);
     for (var i = 0; i < U.TOTAL_SLOTS; i++) counts[i] = 0;
-    assignments.forEach(function (a) {
+    U.mainShifts(assignments).forEach(function (a) {
       for (var s = a.startSlot; s < a.endSlot; s++) counts[U.idx(a.day, s)]++;
     });
     return counts;
@@ -127,7 +132,11 @@
       } else run = 0;
     }
 
-    // Concurrency is the one rule the user may knowingly break.
+    // Concurrency is the one rule the user may knowingly break. It is a
+    // property of the tutoring center, so a shift held anywhere else clears it
+    // without being measured against it.
+    if (U.offRoom(assignment)) return { ok: true, overCapacity: false, overSlots: 0 };
+
     var counts = occupancy(others);
     var over = 0;
     for (var c = start; c < end; c++) {
@@ -146,7 +155,10 @@
     var counts = occupancy(state.assignments);
     var selected = (options && options.selectedTutorId)
       ? TS.store.getTutor(options.selectedTutorId) : null;
-    var win = U.editorWindow(state.tutors, state.assignments);
+    // The grid is the tutoring center and nothing else; embedded classes and
+    // open labs are listed beside it, so they do not stretch its hours either.
+    var drawn = U.mainShifts(state.assignments);
+    var win = U.editorWindow(state.tutors, drawn);
     var rows = win.end - win.start;
 
     container.setAttribute('data-drawing', selected ? '1' : '0');
@@ -190,7 +202,7 @@
       col.setAttribute('data-day', d);
       col.style.height = (rows * rh) + 'px';
 
-      var dayBlocks = state.assignments.filter(function (a) { return a.day === d; });
+      var dayBlocks = drawn.filter(function (a) { return a.day === d; });
       var placement = layoutDay(dayBlocks);
 
       // While a tutor is selected for drawing, their open hours are tinted, so
@@ -286,12 +298,119 @@
         '<button type="button" class="block__remove" data-remove="1" aria-label="Remove ' +
         TS.tutors.esc(full) + ', ' + U.DAY_NAMES[a.day] + ' ' + TS.tutors.esc(range) +
         '">×</button>') +
+      // Where the shift is held is not something a drag can change, so the
+      // block carries a way into the dialog that can.
+      '<button type="button" class="block__edit" data-edit="1" aria-label="Edit ' +
+        TS.tutors.esc(full) + ', ' + U.DAY_NAMES[a.day] + ' ' + TS.tutors.esc(range) +
+        '">✎</button>' +
       '<span class="block__name">' + TS.tutors.esc(labels[tutor.id]) + '</span>' +
       '<span class="block__time">' + TS.tutors.esc(range) + '</span>' +
       '<span class="block__subjects">' + (shorts.join(' · ') || '—') + '</span>' +
       '<span class="block__handle block__handle--bottom" data-edge="end"></span>';
 
     return node;
+  }
+
+  /* ---- away from the center ----------------------------------------------
+   * Embedded classes and open labs, listed beside the calendar rather than
+   * drawn in it. They are still the tutor's hours, so each one carries the
+   * same lock and remove controls a block does, and the same dialog behind
+   * Edit -- which is also the only way to change where a shift is held.
+   */
+  function renderAside(container, state, handlers) {
+    var dark = TS.theme.isDark();
+    var labels = U.displayNames(state.tutors);
+    var shifts = U.offRoomShifts(state.assignments).slice().sort(function (a, b) {
+      return a.day - b.day || a.startSlot - b.startSlot;
+    });
+
+    container.innerHTML = '';
+
+    if (!shifts.length) {
+      var empty = doc.createElement('p');
+      empty.className = 'offroom__empty';
+      empty.textContent = 'Nothing here yet. Add a shift, or press ✎ on one in the calendar, ' +
+        'and mark it as a floating embedded tutor or an open lab.';
+      container.appendChild(empty);
+      return;
+    }
+
+    U.SHIFT_KINDS.forEach(function (kind) {
+      if (kind.key === 'main') return;
+      var group = shifts.filter(function (a) { return a.kind === kind.key; });
+      if (!group.length) return;
+
+      var heading = doc.createElement('h4');
+      heading.className = 'offroom__kind';
+      heading.textContent = kind.plural;
+      container.appendChild(heading);
+
+      var list = doc.createElement('ul');
+      list.className = 'offroom__list';
+
+      group.forEach(function (a) {
+        var tutor = TS.store.getTutor(a.tutorId);
+        if (!tutor) return;
+        var colors = U.blockColors(tutor.colorIndex, dark);
+        var shorts = U.maskToShort(U.subjectMask(tutor.subjects));
+        var full = (tutor.firstName + ' ' + tutor.lastName).trim();
+        var range = U.formatRange(a.startSlot, a.endSlot);
+        var where = U.roomLabel(a, state.settings);
+
+        var li = doc.createElement('li');
+        li.className = 'offroom__item';
+        li.style.background = colors.bg;
+        li.style.borderLeftColor = colors.bar;
+        li.style.color = colors.ink;
+        if (a.locked) li.setAttribute('data-locked', '1');
+        if (U.usesHatch(tutor.colorIndex)) li.setAttribute('data-hatch', '1');
+
+        li.innerHTML =
+          '<div class="offroom__who">' + TS.tutors.esc(labels[tutor.id]) +
+            (a.locked ? ' <span aria-hidden="true">🔒</span>' : '') + '</div>' +
+          '<div class="offroom__when">' + U.DAY_ABBR[a.day] + ' ' + TS.tutors.esc(range) + '</div>' +
+          '<div class="offroom__room">' + TS.tutors.esc(where) + '</div>' +
+          '<div class="offroom__subjects">' + (shorts.join(' · ') || '—') + '</div>' +
+          '<span class="visually-hidden">' + TS.tutors.esc(full) + ', ' +
+            U.DAY_NAMES[a.day] + ', ' + kind.label + (a.locked ? ', locked' : '') + '</span>';
+
+        var actions = doc.createElement('div');
+        actions.className = 'offroom__actions';
+
+        var edit = doc.createElement('button');
+        edit.type = 'button';
+        edit.className = 'btn btn--small';
+        edit.textContent = 'Edit';
+        edit.setAttribute('aria-label', 'Edit ' + full + ', ' + U.DAY_NAMES[a.day] + ' ' + range);
+        edit.addEventListener('click', function () { handlers.onEdit(a.id); });
+        actions.appendChild(edit);
+
+        var lock = doc.createElement('button');
+        lock.type = 'button';
+        lock.className = 'btn btn--small';
+        lock.textContent = a.locked ? 'Unlock' : 'Lock';
+        lock.setAttribute('aria-pressed', a.locked ? 'true' : 'false');
+        lock.addEventListener('click', function () { handlers.onLock(a.id, !a.locked); });
+        actions.appendChild(lock);
+
+        // As on the calendar, locking is what protects a shift, so a locked
+        // row offers no way to remove it.
+        if (!a.locked) {
+          var del = doc.createElement('button');
+          del.type = 'button';
+          del.className = 'btn btn--small btn--danger';
+          del.textContent = 'Remove';
+          del.setAttribute('aria-label', 'Remove ' + full + ', ' + U.DAY_NAMES[a.day] + ' ' + range);
+          del.addEventListener('click', function () { handlers.onRemove(a.id); });
+          actions.appendChild(del);
+        }
+
+        li.appendChild(actions);
+        list.appendChild(li);
+      });
+
+      container.appendChild(list);
+    });
   }
 
   /* ---- interaction -------------------------------------------------------- */
@@ -365,6 +484,11 @@
         if (doomed) removeShift(doomed);
         return;
       }
+      var editBtn = e.target.closest('.block__edit');
+      if (editBtn) {
+        if (callbacks.onEdit) callbacks.onEdit(editBtn.closest('.block').getAttribute('data-id'));
+        return;
+      }
       if (!e.target.closest('.block__lock')) return;
       var a = TS.store.getAssignment(e.target.closest('.block').getAttribute('data-id'));
       if (!a) return;
@@ -376,7 +500,8 @@
     });
 
     container.addEventListener('mousedown', function (e) {
-      if (e.target.closest('.block__lock') || e.target.closest('.block__remove')) return;
+      if (e.target.closest('.block__lock') || e.target.closest('.block__remove') ||
+          e.target.closest('.block__edit')) return;
       var blockEl = e.target.closest('.block');
       if (!blockEl) { startDraw(e); return; }
       var state = getState();
@@ -488,7 +613,8 @@
 
     container.addEventListener('dblclick', function (e) {
       // the corner buttons have already done their own work
-      if (e.target.closest('.block__lock') || e.target.closest('.block__remove')) return;
+      if (e.target.closest('.block__lock') || e.target.closest('.block__remove') ||
+          e.target.closest('.block__edit')) return;
       var blockEl = e.target.closest('.block');
       if (!blockEl) return;
       var a = TS.store.getAssignment(blockEl.getAttribute('data-id'));
@@ -520,6 +646,9 @@
     assignment.startSlot = start;
     assignment.endSlot = end;
     assignment.overCapacity = !!check.overCapacity;
+    // Dragging a block up against another of the tutor's own is the same thing
+    // as drawing it there: one shift, not two that touch.
+    TS.store.mergeTouching(assignment.tutorId, day);
     TS.store.commit('move');
   }
 
@@ -529,6 +658,7 @@
 
   TS.calendar = {
     render: render,
+    renderAside: renderAside,
     attach: attach,
     layoutDay: layoutDay,
     occupancy: occupancy,

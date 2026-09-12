@@ -2,6 +2,13 @@
   'use strict';
   var TS = (root.TS = root.TS || {});
 
+  /* The app's version, and the only place it is written down. A push to main
+   * that changes it is what publishes a release: CI reads this line, tags the
+   * commit and attaches the single-file build. Semantic versioning -- a new
+   * feature is a minor bump, a fix is a patch.
+   */
+  var VERSION = '1.0.0';
+
   var DAY_START_MIN = 7 * 60;      // 7:00 AM
   var SLOT_MINUTES = 30;
   var SLOTS_PER_DAY = 27;          // 7:00 AM through 8:30 PM
@@ -11,12 +18,129 @@
   var DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   var DAY_ABBR = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
-  var SUBJECTS = [
-    { key: 'bio',   bit: 1, short: 'BIO',   label: 'Biology' },
-    { key: 'micro', bit: 2, short: 'MICRO', label: 'Microbiology' },
-    { key: 'ap1',   bit: 4, short: 'AP1',   label: 'Anatomy & Physiology I' },
-    { key: 'ap2',   bit: 8, short: 'AP2',   label: 'Anatomy & Physiology II' }
+  /* The four Life Science classes the schedule ships with. A coordinator can add
+   * their own -- Chemistry, say -- so the live list is kept in settings and
+   * SUBJECTS is rewritten in place to match it, which leaves the array every
+   * module captured at load time valid. Bits are positional and a mask is always
+   * recomputed from tutor.subjects, so reordering the list cannot corrupt a saved
+   * schedule.
+   */
+  var DEFAULT_SUBJECTS = [
+    { key: 'bio',   short: 'BIO',   label: 'Biology' },
+    { key: 'micro', short: 'MICRO', label: 'Microbiology' },
+    { key: 'ap1',   short: 'AP1',   label: 'Anatomy & Physiology I' },
+    { key: 'ap2',   short: 'AP2',   label: 'Anatomy & Physiology II' }
   ];
+
+  var MAX_SUBJECTS = 16;           // a subject mask is a bitfield
+
+  function defaultSubjects() {
+    return DEFAULT_SUBJECTS.map(function (s, i) {
+      return { key: s.key, bit: 1 << i, short: s.short, label: s.label };
+    });
+  }
+
+  function subjectKey(text) {
+    return String(text || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 24);
+  }
+
+  function normalizeSubjectList(list) {
+    var out = [];
+    var seen = {};
+    (list || []).forEach(function (s) {
+      if (!s || out.length >= MAX_SUBJECTS) return;
+      var label = String(s.label || s.short || s.key || '').trim();
+      if (!label) return;
+      var key = subjectKey(s.key) || subjectKey(label);
+      if (!key || seen[key]) return;
+      seen[key] = true;
+      out.push({
+        key: key,
+        bit: 1 << out.length,
+        short: String(s.short || '').trim() || label.slice(0, 6).toUpperCase(),
+        label: label
+      });
+    });
+    // An empty list would leave every tutor unschedulable, so the defaults stand.
+    return out.length ? out : defaultSubjects();
+  }
+
+  var SUBJECTS = defaultSubjects();
+
+  function setSubjects(list) {
+    var next = normalizeSubjectList(list);
+    SUBJECTS.length = 0;
+    next.forEach(function (s) { SUBJECTS.push(s); });
+    return SUBJECTS;
+  }
+
+  /* Where a shift is worked. The main calendar is one room -- the tutoring
+   * center -- and a shift is either in it or somewhere else on campus: an
+   * embedded tutor sitting in the class as it is taught, or an open lab in a
+   * named room. Off-room shifts are still the tutor's paid hours, but they do
+   * not staff the center, so they are listed beside the calendar rather than
+   * drawn in it, and they never count toward its coverage or its concurrency.
+   */
+  var SHIFT_KINDS = [
+    { key: 'main', label: 'At the tutoring center', short: '', plural: '' },
+    { key: 'embedded', label: 'Floating embedded tutor', short: 'Embedded',
+      plural: 'Floating embedded tutors' },
+    { key: 'lab', label: 'Open lab', short: 'Open lab', plural: 'Open labs' }
+  ];
+
+  function shiftKind(key) {
+    for (var i = 0; i < SHIFT_KINDS.length; i++) {
+      if (SHIFT_KINDS[i].key === key) return SHIFT_KINDS[i];
+    }
+    return SHIFT_KINDS[0];
+  }
+
+  function inMainRoom(a) { return !a || !a.kind || a.kind === 'main'; }
+  function offRoom(a) { return !inMainRoom(a); }
+  function mainShifts(list) { return (list || []).filter(inMainRoom); }
+  function offRoomShifts(list) { return (list || []).filter(offRoom); }
+
+  function roomLabel(a, settings) {
+    if (a && a.room) return a.room;
+    if (inMainRoom(a)) return (settings && settings.location) || '';
+    return 'room TBA';
+  }
+
+  // "Mon, Wed & Fri" -- an ampersand rather than "and", because these read as
+  // labels on a schedule and not as sentences.
+  function daysLabel(days) {
+    var names = (days || []).map(function (d) { return DAY_ABBR[d]; });
+    if (names.length < 2) return names.join('');
+    return names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1];
+  }
+
+  /* One entry per tutor, kind, room and time, carrying the days it runs. A
+   * floating tutor who covers the same window on Tuesday and Thursday is one
+   * line on the handout -- "Tue & Thu 12:30-2:00 PM" -- not the same line twice.
+   */
+  function groupOffRoom(assignments) {
+    var order = [];
+    var byKey = {};
+    offRoomShifts(assignments)
+      .slice()
+      .sort(function (a, b) {
+        return a.startSlot - b.startSlot || a.endSlot - b.endSlot || a.day - b.day;
+      })
+      .forEach(function (a) {
+        var key = [a.tutorId, a.kind, a.room, a.startSlot, a.endSlot].join('|');
+        if (!byKey[key]) {
+          byKey[key] = {
+            tutorId: a.tutorId, kind: a.kind, room: a.room,
+            startSlot: a.startSlot, endSlot: a.endSlot, days: [], ids: []
+          };
+          order.push(byKey[key]);
+        }
+        if (byKey[key].days.indexOf(a.day) === -1) byKey[key].days.push(a.day);
+        byKey[key].ids.push(a.id);
+      });
+    order.forEach(function (g) { g.days.sort(function (x, y) { return x - y; }); });
+    return order;
+  }
 
   // Okabe-Ito colorblind-safe hues. Brand-adjacent blue and vermillion lead so a
   // typical roster reads as one family with the navy/royal chrome.
@@ -274,6 +398,7 @@
   }
 
   TS.util = {
+    VERSION: VERSION,
     DAY_START_MIN: DAY_START_MIN,
     SLOT_MINUTES: SLOT_MINUTES,
     SLOTS_PER_DAY: SLOTS_PER_DAY,
@@ -286,6 +411,21 @@
     DAY_NAMES: DAY_NAMES,
     DAY_ABBR: DAY_ABBR,
     SUBJECTS: SUBJECTS,
+    DEFAULT_SUBJECTS: DEFAULT_SUBJECTS,
+    MAX_SUBJECTS: MAX_SUBJECTS,
+    defaultSubjects: defaultSubjects,
+    subjectKey: subjectKey,
+    normalizeSubjectList: normalizeSubjectList,
+    setSubjects: setSubjects,
+    SHIFT_KINDS: SHIFT_KINDS,
+    shiftKind: shiftKind,
+    inMainRoom: inMainRoom,
+    offRoom: offRoom,
+    mainShifts: mainShifts,
+    offRoomShifts: offRoomShifts,
+    roomLabel: roomLabel,
+    daysLabel: daysLabel,
+    groupOffRoom: groupOffRoom,
     PALETTE: PALETTE,
     SURFACE_LIGHT: SURFACE_LIGHT,
     SURFACE_DARK: SURFACE_DARK,

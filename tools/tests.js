@@ -533,6 +533,249 @@
     TS.store.clearHistory();
   }
 
+  /* ---- 6. embedded classes and open labs --------------------------------
+   * A shift away from the tutoring center is the tutor's time and the
+   * department's money, but it is not coverage of the room the calendar is
+   * about. These assert both halves of that, because getting either one wrong
+   * is invisible on screen until a schedule is already printed.
+   */
+  function testShiftKinds(r) {
+    var one = TS.store.normalizeAssignment({ tutorId: 't', day: 1, startSlot: 4, endSlot: 8 });
+    r.eq(one.kind, 'main', 'a shift with no kind is at the tutoring center');
+    r.eq(one.room, '', 'a center shift carries no room of its own');
+
+    var odd = TS.store.normalizeAssignment({ tutorId: 't', kind: 'teleport', room: 'OMN 286' });
+    r.eq(odd.kind, 'main', 'an unknown kind falls back to the center');
+    r.eq(odd.room, '', 'and it drops the room with it');
+
+    var lab = TS.store.normalizeAssignment({ tutorId: 't', kind: 'lab', room: '  OMN 286 ' });
+    r.eq(lab.kind, 'lab', 'an open lab keeps its kind');
+    r.eq(lab.room, 'OMN 286', 'and its room, trimmed');
+
+    // Round trip through the store, which is also the undo path.
+    var state = fixtureState();
+    var who = state.tutors[0].id;
+    state.assignments = [
+      { id: 's1', tutorId: who, day: 0, startSlot: 4, endSlot: 8, kind: 'embedded', room: 'OMN 286' }
+    ];
+    var back = TS.store.migrate(JSON.parse(JSON.stringify(state)));
+    r.eq(back.assignments[0].kind, 'embedded', 'a kind survives a save and load');
+    r.eq(back.assignments[0].room, 'OMN 286', 'so does the room');
+
+    /* The rule the whole feature exists for: a tutor at the center and a
+     * floating tutor down the hall at the same time leave room for a second
+     * tutor at the center, because the cap counts the center only. */
+    var room = fixtureState();
+    room.settings.maxConcurrent = 2;
+    var a = room.tutors[0], b = room.tutors[1], c = room.tutors[2];
+    function free(t, day, from, to) {
+      for (var s = from; s < to; s++) t.availability[U.idx(day, s)] = 1;
+    }
+    free(a, 0, 8, 12); free(b, 0, 8, 12); free(c, 0, 8, 12);
+    room.assignments = [
+      { id: 'm1', tutorId: a.id, day: 0, startSlot: 8, endSlot: 12, kind: 'main', room: '' },
+      { id: 'm2', tutorId: b.id, day: 0, startSlot: 8, endSlot: 12, kind: 'main', room: '' },
+      { id: 'e1', tutorId: c.id, day: 0, startSlot: 8, endSlot: 12, kind: 'embedded', room: 'OMN 286' }
+    ].map(TS.store.normalizeAssignment);
+
+    var problems = TS.optimizer.validate(room, room.assignments);
+    r.eq(problems.length, 0,
+      'two tutors at the center plus a floating tutor elsewhere breaks no rule',
+      problems.join(' | '));
+    r.eq(TS.optimizer.stats(room, room.assignments).overCapacitySlots, 0,
+      'the floating tutor does not put the center over its cap');
+
+    /* An hour only an off-room shift covers is still a hole at the center, and
+     * the hole says why: the one tutor who could work it is teaching. The
+     * roster is one tutor, free across the printed window, so the whole day is
+     * that same answer rather than a stretch of mixed reasons. */
+    var hole = TS.store.emptyState();
+    hole.tutors = [TS.store.normalizeTutor({
+      id: 'solo', firstName: 'Solo', lastName: 'Teach',
+      subjects: { bio: true }, maxHoursPerWeek: 15, availability: []
+    })];
+    free(hole.tutors[0], 0, U.CORE_START_SLOT, U.CORE_END_SLOT);
+    hole.assignments = [TS.store.normalizeAssignment({
+      id: 'e2', tutorId: 'solo', day: 0,
+      startSlot: U.CORE_START_SLOT, endSlot: U.CORE_END_SLOT,
+      kind: 'embedded', room: 'OMN 282'
+    })];
+
+    var gaps = TS.optimizer.analyzeGaps(hole, hole.assignments);
+    var monday = gaps.filter(function (g) { return g.day === 0; });
+    r.eq(monday.length, 1, 'an embedded tutor leaves the whole of their day uncovered',
+      JSON.stringify(gaps.map(function (g) { return [g.day, g.start, g.end, g.reason]; })));
+    r.eq(monday.length ? monday[0].reason : '', 'elsewhere',
+      'and the hole says they are in a class rather than blaming a cap');
+    r.eq(TS.optimizer.stats(hole, hole.assignments).offRoomHours,
+      (U.CORE_END_SLOT - U.CORE_START_SLOT) / 2,
+      'those hours are reported as time away from the center');
+    r.eq(TS.optimizer.stats(hole, hole.assignments).coveredSlots, 0,
+      'and none of them count as coverage');
+
+    /* The optimizer treats them as fixed: it neither removes them nor puts the
+     * same tutor at the center while they are teaching. */
+    var fixed = fixtureState();
+    var keeper = fixed.tutors[0];
+    fixed.assignments = [TS.store.normalizeAssignment(
+      { id: 'e3', tutorId: keeper.id, day: 0, startSlot: 4, endSlot: 8, kind: 'lab', room: 'OMN 296' }
+    )];
+    free(keeper, 0, 4, 8);
+    fixed.assignments = TS.optimizer.optimize(fixed, { seed: 5, iterations: 20000 });
+
+    var survivor = fixed.assignments.filter(function (x) { return x.id === 'e3'; })[0];
+    r.ok(!!survivor, 'an open lab survives a full optimize');
+    if (survivor) {
+      r.eq(survivor.kind + '/' + survivor.room, 'lab/OMN 296',
+        'and comes back with its kind and room intact');
+      r.eq(survivor.day + ':' + survivor.startSlot + '-' + survivor.endSlot, '0:4-8',
+        'and exactly where it was drawn');
+    }
+    var doubleBooked = fixed.assignments.filter(function (x) {
+      return x.tutorId === keeper.id && x.id !== 'e3' && x.day === 0 &&
+        x.startSlot < 8 && x.endSlot > 4;
+    });
+    r.eq(doubleBooked.length, 0, 'nobody is scheduled at the center while they are in a lab');
+    r.eq(TS.optimizer.validate(fixed, fixed.assignments).length, 0,
+      'a schedule with an open lab in it breaks no rule',
+      TS.optimizer.validate(fixed, fixed.assignments).slice(0, 4).join(' | '));
+
+    /* The handout groups repeats, so a Tuesday and Thursday pair is one line. */
+    var grouped = U.groupOffRoom([
+      { id: 'g1', tutorId: 'x', day: 1, startSlot: 11, endSlot: 15, kind: 'embedded', room: 'OMN 286' },
+      { id: 'g2', tutorId: 'x', day: 3, startSlot: 11, endSlot: 15, kind: 'embedded', room: 'OMN 286' },
+      { id: 'g3', tutorId: 'x', day: 4, startSlot: 11, endSlot: 15, kind: 'embedded', room: 'OMN 282' },
+      { id: 'g4', tutorId: 'x', day: 0, startSlot: 4, endSlot: 8, kind: 'main', room: '' }
+    ]);
+    r.eq(grouped.length, 2, 'the handout collapses the same window in the same room');
+    r.eq(U.daysLabel(grouped[0].days), 'Tue & Thu', 'and names both days');
+    r.eq(U.daysLabel([0, 2, 4]), 'Mon, Wed & Fri', 'three days read as a list');
+  }
+
+  /* ---- 7. joining shifts that touch -------------------------------------- */
+
+  function testMergeTouching(r) {
+    TS.store.reset();
+    TS.store.loadSample();
+    var state = TS.store.state;
+    var who = state.tutors[0].id;
+
+    function add(start, end, extra) {
+      var a = { tutorId: who, day: 0, startSlot: start, endSlot: end };
+      Object.keys(extra || {}).forEach(function (k) { a[k] = extra[k]; });
+      return TS.store.addAssignment(a);
+    }
+
+    // 9:00-11:00 then 11:00-2:00 is one shift from 9:00 to 2:00.
+    add(4, 8);
+    add(8, 14);
+    r.eq(TS.store.mergeTouching(who, 0), 1, 'two shifts that touch join into one');
+    var mine = state.assignments.filter(function (a) { return a.tutorId === who; });
+    r.eq(mine.length, 1, 'and leave a single block behind');
+    r.eq(mine[0].startSlot + '-' + mine[0].endSlot, '4-14', 'spanning both');
+
+    // A gap between them is a real gap.
+    TS.store.state.assignments = [];
+    add(4, 8);
+    add(9, 14);
+    r.eq(TS.store.mergeTouching(who, 0), 0, 'a shift with a gap before it stays separate');
+
+    // Locking is what pins a shift down, so a locked neighbour is left alone.
+    TS.store.state.assignments = [];
+    add(4, 8, { locked: true });
+    add(8, 14);
+    r.eq(TS.store.mergeTouching(who, 0), 0, 'a locked shift is not absorbed');
+
+    // An open lab beside a shift at the center is two different places.
+    TS.store.state.assignments = [];
+    add(4, 8);
+    add(8, 14, { kind: 'lab', room: 'OMN 286' });
+    r.eq(TS.store.mergeTouching(who, 0), 0, 'a shift at the center does not swallow an open lab');
+
+    // Three in a row collapse in one pass.
+    TS.store.state.assignments = [];
+    add(4, 6);
+    add(6, 8);
+    add(8, 10);
+    r.eq(TS.store.mergeTouching(who, 0), 2, 'a run of three joins in one pass');
+    r.eq(state.assignments.length, 1, 'leaving one block');
+    r.eq(state.assignments[0].startSlot + '-' + state.assignments[0].endSlot, '4-10',
+      'spanning all three');
+
+    TS.store.reset();
+    TS.store.clearHistory();
+  }
+
+  /* ---- 8. the class list ------------------------------------------------- */
+
+  function testSubjectClasses(r) {
+    var defaults = U.defaultSubjects();
+    r.eq(defaults.length, 4, 'the schedule ships with four Life Science classes');
+    r.eq(defaults.map(function (c) { return c.key; }).join(','), 'bio,micro,ap1,ap2',
+      'and their keys are the ones every saved schedule already uses');
+    r.eq(defaults.map(function (c) { return c.bit; }).join(','), '1,2,4,8',
+      'bits are positional');
+
+    var messy = U.normalizeSubjectList([
+      { key: 'bio', short: 'BIO', label: 'Biology' },
+      { key: 'bio', short: 'DUP', label: 'Biology again' },
+      { label: '  Chemistry  ' },
+      { label: '' },
+      null
+    ]);
+    r.eq(messy.length, 2, 'a duplicate key and a nameless class are dropped');
+    r.eq(messy[1].key, 'chemistry', 'a key is derived from the name when none is given');
+    r.eq(messy[1].short, 'CHEMIS', 'and a short code from the first letters');
+    r.eq(messy[1].bit, 2, 'bits are reassigned by position');
+    r.eq(U.normalizeSubjectList([]).length, 4, 'an empty list falls back to the defaults');
+
+    var tooMany = [];
+    for (var i = 0; i < U.MAX_SUBJECTS + 5; i++) tooMany.push({ label: 'Class ' + i });
+    r.eq(U.normalizeSubjectList(tooMany).length, U.MAX_SUBJECTS,
+      'the list is capped at what a bitmask can hold');
+
+    // Adding a class: the mask helpers follow the live list.
+    var state = TS.store.emptyState();
+    state.settings.subjects = U.normalizeSubjectList(
+      U.defaultSubjects().concat([{ key: 'chem', short: 'CHEM', label: 'Chemistry' }])
+    );
+    U.setSubjects(state.settings.subjects);
+    r.eq(U.SUBJECTS.length, 5, 'the live list takes the new class');
+
+    var chemist = TS.store.normalizeTutor({
+      firstName: 'Rosalind', lastName: 'Fry',
+      subjects: { chem: true }, availability: []
+    });
+    var mask = U.subjectMask(chemist.subjects);
+    r.eq(mask, 16, 'the new class gets the next bit');
+    r.eq(U.maskToShort(mask).join(','), 'CHEM', 'and its short code');
+    r.eq(U.maskToLabels(mask).join(','), 'Chemistry', 'and its name');
+
+    // A CSV round trip has to carry it too, or a roster loses a class on the
+    // way to the spreadsheet and back.
+    var text = TS.csv.exportTutors([chemist]);
+    r.ok(text.split('\r\n')[0].indexOf('CHEM') !== -1, 'the export has a column for it',
+      text.split('\r\n')[0]);
+    var reimported = TS.csv.importTutors(text);
+    r.eq(reimported.warnings.length, 0, 'and re-imports cleanly', reimported.warnings.join(' | '));
+    r.ok(reimported.tutors.length === 1 && reimported.tutors[0].subjects.chem,
+      'with the class still checked');
+
+    // An older file names Biology in full rather than by its code.
+    var older = TS.csv.importTutors('First,Last,Biology,AP1,Availability\nJo,Lin,Yes,No,"Mon 1-4pm"\n');
+    r.ok(older.tutors.length === 1 && older.tutors[0].subjects.bio,
+      'a header that spells out the class name still matches');
+
+    // Removing a class is what the settings panel does to every tutor.
+    state.settings.subjects = state.settings.subjects.filter(function (c) { return c.key !== 'chem'; });
+    U.setSubjects(state.settings.subjects);
+    delete chemist.subjects.chem;
+    r.eq(U.subjectMask(chemist.subjects), 0, 'removing a class un-marks the tutors who taught it');
+    r.eq(U.SUBJECTS.length, 4, 'and leaves the original four');
+
+    U.setSubjects(U.defaultSubjects());
+  }
+
   function testEmptyRoster(r) {
     var state = TS.store.emptyState();
     var result = TS.optimizer.optimize(state, { iterations: 500 });
@@ -550,6 +793,9 @@
     testUndoHistory(r);
     testContrast(r);
     testCsv(r);
+    testSubjectClasses(r);
+    testShiftKinds(r);
+    testMergeTouching(r);
     testEmptyRoster(r);
     testFixtureBudgetOff(r);
     testFixtureBudgetOn(r);

@@ -8,7 +8,7 @@
 
   function defaultSettings() {
     return {
-      title: 'Science Tutoring Schedule',
+      title: 'Life Science Tutor Schedule',
       term: 'Fall 2026',
       effective: '',
       notes: 'No tutoring will be available September 7, October 5–11, or November 23–29, ' +
@@ -28,6 +28,7 @@
       weeklyBudgetEnabled: false,
       weeklyBudgetHours: 80,
       evenDistribution: true,
+      subjects: U.defaultSubjects(),
       theme: 'system'
     };
   }
@@ -67,6 +68,9 @@
 
   function commit(reason) {
     reason = reason || 'change';
+    // One choke point for the class list: however it changed -- edited here,
+    // imported, or stepped over by undo -- the masks follow the state.
+    U.setSubjects(state.settings.subjects);
     if (mark !== null) {
       undoStack.push({ json: mark, reason: reason });
       if (undoStack.length > MAX_HISTORY) undoStack.shift();
@@ -169,6 +173,10 @@
         if (Object.prototype.hasOwnProperty.call(obj.settings, k)) next.settings[k] = obj.settings[k];
       });
     }
+    // The class list drives every subject mask in the app, so it is applied
+    // before a single tutor is normalized against it.
+    next.settings.subjects = U.normalizeSubjectList(next.settings.subjects);
+    U.setSubjects(next.settings.subjects);
     next.tutors = (obj.tutors || []).map(normalizeTutor);
     var ids = {};
     next.tutors.forEach(function (t) { ids[t.id] = true; });
@@ -183,17 +191,24 @@
     for (var i = 0; i < U.TOTAL_SLOTS; i++) {
       avail[i] = t.availability && t.availability[i] ? 1 : 0;
     }
+    /* Every class the schedule currently knows about, plus any flag left over
+     * from one that was removed: keeping the stray keys is what lets an
+     * accidental deletion be undone without losing who could teach what.
+     */
+    var subjects = {};
+    Object.keys(t.subjects || {}).forEach(function (k) {
+      if (t.subjects[k]) subjects[k] = true;
+    });
+    U.SUBJECTS.forEach(function (s) {
+      subjects[s.key] = !!(t.subjects && t.subjects[s.key]);
+    });
+
     return {
       id: t.id || U.uid('tutor'),
       firstName: String(t.firstName || '').trim(),
       lastName: String(t.lastName || '').trim(),
       colorIndex: typeof t.colorIndex === 'number' ? t.colorIndex : 0,
-      subjects: {
-        bio: !!(t.subjects && t.subjects.bio),
-        micro: !!(t.subjects && t.subjects.micro),
-        ap1: !!(t.subjects && t.subjects.ap1),
-        ap2: !!(t.subjects && t.subjects.ap2)
-      },
+      subjects: subjects,
       maxHoursPerWeek: typeof t.maxHoursPerWeek === 'number' ? t.maxHoursPerWeek : 15,
       minHoursPerWeek: typeof t.minHoursPerWeek === 'number' ? t.minHoursPerWeek : 0,
       maxHoursPerDay: typeof t.maxHoursPerDay === 'number' ? t.maxHoursPerDay : null,
@@ -203,12 +218,17 @@
   }
 
   function normalizeAssignment(a) {
+    var kind = U.shiftKind(a.kind).key;
     return {
       id: a.id || U.uid('shift'),
       tutorId: a.tutorId,
       day: a.day | 0,
       startSlot: a.startSlot | 0,
       endSlot: a.endSlot | 0,
+      kind: kind,
+      // The main calendar's room is the schedule's location, named once in
+      // settings; only a shift somewhere else carries a room of its own.
+      room: kind === 'main' ? '' : String(a.room || '').trim(),
       locked: !!a.locked,
       overCapacity: !!a.overCapacity
     };
@@ -263,6 +283,35 @@
       if (state.assignments[i].id === id) return state.assignments[i];
     }
     return null;
+  }
+
+  /* A tutor given 9:00-11:00 and then 11:00-2:00 is working one shift, not two,
+   * so touching blocks are stitched together as they are placed -- the same
+   * thing the optimizer does to its own fragments on the way out. Kind and room
+   * have to match, or an open lab would swallow the shift beside it, and a
+   * locked block is left alone because locking is what pins a shift down.
+   *
+   * This can never create a stretch the rules would have refused: the break
+   * rule measures the hours a tutor actually works in a row, not the block, so
+   * a shift that would join two others into six unbroken hours is turned away
+   * before it is ever placed.
+   */
+  function mergeTouching(tutorId, day) {
+    var mine = state.assignments.filter(function (a) {
+      return a.tutorId === tutorId && a.day === day && !a.locked;
+    }).sort(function (a, b) { return a.startSlot - b.startSlot; });
+
+    var merged = 0;
+    for (var i = 0; i < mine.length - 1; i++) {
+      var a = mine[i], b = mine[i + 1];
+      if (a.endSlot !== b.startSlot || a.kind !== b.kind || a.room !== b.room) continue;
+      a.endSlot = b.endSlot;
+      a.overCapacity = a.overCapacity || b.overCapacity;
+      removeAssignment(b.id);
+      mine[i + 1] = a;      // carry the grown block into the next comparison
+      merged++;
+    }
+    return merged;
   }
 
   function slotsFor(tutorId) {
@@ -383,12 +432,14 @@
     load: load,
     migrate: migrate,
     normalizeTutor: normalizeTutor,
+    normalizeAssignment: normalizeAssignment,
     addTutor: addTutor,
     getTutor: getTutor,
     removeTutor: removeTutor,
     addAssignment: addAssignment,
     getAssignment: getAssignment,
     removeAssignment: removeAssignment,
+    mergeTouching: mergeTouching,
     slotsFor: slotsFor,
     totalSlots: totalSlots,
     toJson: toJson,

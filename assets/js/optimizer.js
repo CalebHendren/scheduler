@@ -86,7 +86,8 @@
     if (n >= 2) score += W_COVER2 + (n - 2) * W_COVERN;
 
     var union = 0, dup = 0, i, j;
-    var counts = [0, 0, 0, 0];
+    var counts = [];
+    for (j = 0; j < U.SUBJECTS.length; j++) counts.push(0);
     for (i = 0; i < n; i++) {
       var mask = ctx.tutors[occupants[i]].mask;
       union |= mask;
@@ -95,7 +96,7 @@
       }
     }
     score += U.popcount(union) * W_SUBJECT;
-    for (j = 0; j < 4; j++) {
+    for (j = 0; j < counts.length; j++) {
       if (counts[j] > 1) dup += counts[j] - 1;
     }
     return score - dup * W_DUP;
@@ -157,21 +158,30 @@
 
   /* ---- mutation, with exact incremental scoring ------------------------ */
 
+  /* An off-room block -- an embedded class or an open lab -- occupies the tutor
+   * and spends the budget, but it staffs a room the schedule is not about. So
+   * it takes no place in slotTutors and earns no coverage score: that single
+   * asymmetry is what keeps the concurrency cap and the coverage report about
+   * the tutoring center, while the tutor's own caps and break rule still see
+   * every hour they work.
+   */
   function applyAdd(sol, block) {
     var ctx = sol.ctx;
     var len = block.end - block.start;
     var row = sol.tutorDayMap[block.tutorIndex][block.day];
     for (var s = block.start; s < block.end; s++) {
       var i = U.idx(block.day, s);
-      sol.coreScore -= slotScore(ctx, sol.slotTutors[i]);
-      sol.slotTutors[i].push(block.tutorIndex);
-      sol.coreScore += slotScore(ctx, sol.slotTutors[i]);
+      if (!block.offRoom) {
+        sol.coreScore -= slotScore(ctx, sol.slotTutors[i]);
+        sol.slotTutors[i].push(block.tutorIndex);
+        sol.coreScore += slotScore(ctx, sol.slotTutors[i]);
+      }
       row[s] = 1;
     }
     sol.tutorSlots[block.tutorIndex] += len;
     sol.tutorDaySlots[block.tutorIndex][block.day] += len;
     sol.assignedSlots += len;
-    sol.coreScore += len * W_SLOT - W_BLOCK;
+    if (!block.offRoom) sol.coreScore += len * W_SLOT - W_BLOCK;
     sol.blocks.push(block);
     return block;
   }
@@ -182,16 +192,18 @@
     var row = sol.tutorDayMap[block.tutorIndex][block.day];
     for (var s = block.start; s < block.end; s++) {
       var i = U.idx(block.day, s);
-      sol.coreScore -= slotScore(ctx, sol.slotTutors[i]);
-      var at = sol.slotTutors[i].indexOf(block.tutorIndex);
-      if (at !== -1) sol.slotTutors[i].splice(at, 1);
-      sol.coreScore += slotScore(ctx, sol.slotTutors[i]);
+      if (!block.offRoom) {
+        sol.coreScore -= slotScore(ctx, sol.slotTutors[i]);
+        var at = sol.slotTutors[i].indexOf(block.tutorIndex);
+        if (at !== -1) sol.slotTutors[i].splice(at, 1);
+        sol.coreScore += slotScore(ctx, sol.slotTutors[i]);
+      }
       row[s] = 0;
     }
     sol.tutorSlots[block.tutorIndex] -= len;
     sol.tutorDaySlots[block.tutorIndex][block.day] -= len;
     sol.assignedSlots -= len;
-    sol.coreScore -= len * W_SLOT - W_BLOCK;
+    if (!block.offRoom) sol.coreScore -= len * W_SLOT - W_BLOCK;
     var bi = sol.blocks.indexOf(block);
     if (bi !== -1) sol.blocks.splice(bi, 1);
     return block;
@@ -212,14 +224,15 @@
     return gain + (end - start) * W_SLOT - W_BLOCK;
   }
 
-  function makeBlock(tutorIndex, day, start, end, locked, id) {
+  function makeBlock(tutorIndex, day, start, end, locked, id, offRoom) {
     return {
       id: id || null,
       tutorIndex: tutorIndex,
       day: day,
       start: start,
       end: end,
-      locked: !!locked
+      locked: !!locked,
+      offRoom: !!offRoom
     };
   }
 
@@ -236,12 +249,12 @@
     var merged = [];
     sorted.forEach(function (b) {
       var prev = merged[merged.length - 1];
-      if (prev && !prev.locked && !b.locked &&
+      if (prev && !prev.locked && !b.locked && !prev.offRoom && !b.offRoom &&
           prev.tutorIndex === b.tutorIndex && prev.day === b.day && prev.end === b.start) {
         prev.end = b.end;
         return;
       }
-      merged.push(makeBlock(b.tutorIndex, b.day, b.start, b.end, b.locked, b.id));
+      merged.push(makeBlock(b.tutorIndex, b.day, b.start, b.end, b.locked, b.id, b.offRoom));
     });
     return merged;
   }
@@ -249,7 +262,7 @@
   function cloneSolution(sol) {
     var copy = createSolution(sol.ctx);
     sol.blocks.forEach(function (b) {
-      applyAdd(copy, makeBlock(b.tutorIndex, b.day, b.start, b.end, b.locked, b.id));
+      applyAdd(copy, makeBlock(b.tutorIndex, b.day, b.start, b.end, b.locked, b.id, b.offRoom));
     });
     return copy;
   }
@@ -485,13 +498,19 @@
     var iterations = opts.iterations || 120000;
     var sol = createSolution(ctx);
 
-    // Locked blocks are laid down first and never removed, so a manual
-    // placement survives re-optimization exactly as the user left it.
+    /* Locked blocks are laid down first and never removed, so a manual
+     * placement survives re-optimization exactly as the user left it. An
+     * embedded class or an open lab is fixed in the same way whether or not it
+     * was locked -- it is tied to a real class in a real room, and not
+     * something the optimizer is entitled to invent, move or take away.
+     */
+    var fixed = {};
     state.assignments.forEach(function (a) {
-      if (!a.locked) return;
+      if (!a.locked && U.inMainRoom(a)) return;
       var t = ctx.byId[a.tutorId];
       if (!t) return;
-      applyAdd(sol, makeBlock(t.index, a.day, a.startSlot, a.endSlot, true, a.id));
+      fixed[a.id] = a;
+      applyAdd(sol, makeBlock(t.index, a.day, a.startSlot, a.endSlot, true, a.id, U.offRoom(a)));
     });
 
     var phase = 'greedy';
@@ -503,7 +522,7 @@
 
     function snapshot() {
       best = sol.blocks.map(function (b) {
-        return makeBlock(b.tutorIndex, b.day, b.start, b.end, b.locked, b.id);
+        return makeBlock(b.tutorIndex, b.day, b.start, b.end, b.locked, b.id, b.offRoom);
       });
       bestScore = totalScore(sol);
     }
@@ -549,14 +568,19 @@
       get bestScore() { return bestScore; },
       result: function () {
         return mergeAdjacent(best || []).map(function (b) {
+          // A fixed block comes back out as the user wrote it, room and lock
+          // included -- the solver only ever held it in place.
+          var was = b.id ? fixed[b.id] : null;
           return {
             id: b.id || U.uid('shift'),
             tutorId: ctx.tutors[b.tutorIndex].id,
             day: b.day,
             startSlot: b.start,
             endSlot: b.end,
-            locked: !!b.locked,
-            overCapacity: false
+            kind: was ? was.kind : 'main',
+            room: was ? was.room : '',
+            locked: was ? !!was.locked : !!b.locked,
+            overCapacity: was ? !!was.overCapacity : false
           };
         });
       }
@@ -586,11 +610,13 @@
     if (!t) return unchanged;
 
     // Existing shifts for this tutor are rebuilt from scratch unless they are
-    // locked, which is what makes the button safe to press twice.
+    // locked, which is what makes the button safe to press twice. An embedded
+    // class or an open lab is kept either way: it is not the optimizer's to
+    // redraw, and the hours it spends are what the rest has to fit around.
     var kept = [];
     var replaced = 0;
     state.assignments.forEach(function (a) {
-      if (a.tutorId !== tutorId || a.locked) kept.push(a);
+      if (a.tutorId !== tutorId || a.locked || U.offRoom(a)) kept.push(a);
       else replaced++;
     });
 
@@ -605,6 +631,8 @@
         day: b.day,
         startSlot: b.start,
         endSlot: b.end,
+        kind: 'main',
+        room: '',
         locked: false,
         overCapacity: false
       };
@@ -626,7 +654,7 @@
     assignments.forEach(function (a) {
       var t = ctx.byId[a.tutorId];
       if (!t) return;
-      applyAdd(sol, makeBlock(t.index, a.day, a.startSlot, a.endSlot, a.locked, a.id));
+      applyAdd(sol, makeBlock(t.index, a.day, a.startSlot, a.endSlot, a.locked, a.id, U.offRoom(a)));
     });
     return sol;
   }
@@ -635,11 +663,15 @@
    * core, widened to whatever anyone is available for. Counting 7:00 AM against
    * a roster where nobody works mornings would report two thirds of the week as
    * uncovered and give the coordinator nothing to act on.
+   *
+   * Coverage means a tutor at the centre. An embedded class or an open lab is
+   * counted in totalHours, and reported separately as offRoomHours, but it
+   * leaves the desk empty and the hole it leaves is reported as one.
    */
   function stats(state, assignments) {
     var ctx = buildContext(state);
     var sol = solutionFromAssignments(ctx, assignments);
-    var win = U.editorWindow(state.tutors, assignments);
+    var win = U.editorWindow(state.tutors, U.mainShifts(assignments));
     var covered = 0, doubled = 0, subjectSum = 0, openSlots = 0;
     for (var d = 0; d < U.DAYS; d++) {
       for (var s = win.start; s < win.end; s++) {
@@ -656,8 +688,12 @@
     var perTutor = ctx.tutors.map(function (t) {
       return { id: t.id, hours: sol.tutorSlots[t.index] / 2 };
     });
+    var offRoomSlots = U.offRoomShifts(assignments).reduce(function (n, a) {
+      return n + (a.endSlot - a.startSlot);
+    }, 0);
     return {
       totalHours: sol.assignedSlots / 2,
+      offRoomHours: offRoomSlots / 2,
       coveredSlots: covered,
       totalSlots: openSlots,
       window: win,
@@ -693,6 +729,14 @@
           break;
         }
       }
+      // Nobody is in two rooms at once: the center and an embedded class are
+      // different places, so overlap has to be checked across every kind.
+      assignments.forEach(function (b) {
+        if (b === a || b.tutorId !== a.tutorId || b.day !== a.day) return;
+        if (a.startSlot < b.endSlot && a.endSlot > b.startSlot && a.id < b.id) {
+          problems.push(t.id + ' has two overlapping shifts on day ' + a.day);
+        }
+      });
     });
 
     for (i = 0; i < U.TOTAL_SLOTS; i++) {
@@ -744,7 +788,7 @@
     var gaps = [];
     var budgetSpent = isFinite(ctx.budgetSlots) && sol.assignedSlots >= ctx.budgetSlots;
 
-    var win = U.editorWindow(state.tutors, assignments);
+    var win = U.editorWindow(state.tutors, U.mainShifts(assignments));
     for (var d = 0; d < U.DAYS; d++) {
       var run = null;
       for (var s = win.start; s <= win.end; s++) {
@@ -780,18 +824,25 @@
 
   function reasonFor(ctx, sol, day, slot, budgetSpent) {
     var i = U.idx(day, slot);
-    var anyAvailable = false, anyWithHours = false, anyPlaceable = false;
+    var anyAvailable = false, anyFree = false, anyWithHours = false, anyPlaceable = false;
 
     for (var k = 0; k < ctx.tutors.length; k++) {
       var t = ctx.tutors[k];
       if (!t.avail[i]) continue;
       anyAvailable = true;
+      // Already working this half hour, which at an empty slot means they are
+      // in a class or an open lab somewhere else.
+      if (sol.tutorDayMap[t.index][day][slot]) continue;
+      anyFree = true;
       if (sol.tutorSlots[t.index] + ctx.minShift > t.maxSlots) continue;
       anyWithHours = true;
       if (couldFit(ctx, t, day, slot)) anyPlaceable = true;
     }
 
     if (!anyAvailable) return 'unavailable';
+    // Said before the cap, because it is the more actionable of the two: the
+    // fix is to move a class, not to approve more hours.
+    if (!anyFree) return 'elsewhere';
     if (!anyWithHours) return 'capped';
     // Whether a legal shift exists at all is checked before the budget: a hole
     // no shift can reach is not a money problem, and blaming the budget sends
@@ -806,6 +857,7 @@
 
   var GAP_REASONS = {
     unavailable: 'No tutor is available',
+    elsewhere: 'Every available tutor is in a class or an open lab',
     capped: 'Every available tutor is at their weekly cap',
     budget: 'The weekly hour budget is spent',
     unscheduled: 'A tutor could cover this — try Auto-optimize',

@@ -1,12 +1,15 @@
-# Tutor Schedule — Chattanooga State
+# Life Science Tutor Schedule — Chattanooga State
 
 A weekly tutoring schedule builder for the Student Success Center (IMC 270) at Chattanooga
-State Community College, covering Biology, Microbiology, Anatomy & Physiology I (AP1) and
-Anatomy & Physiology II (AP2).
+State Community College. It ships set up for the Life Science classes — Biology, Microbiology,
+Anatomy & Physiology I (AP1) and Anatomy & Physiology II (AP2) — and you can
+[add your own](#the-classes-you-tutor).
 
 Enter your tutors, check the classes each one can tutor, paint their availability, and press
 **Auto-optimize**. You get a Monday–Friday, 7:00 AM–8:30 PM calendar you can print, hand out,
-and post — with a QR code to tutor.com for the hours nobody is on shift.
+and post — with a QR code to tutor.com for the hours nobody is on shift. Shifts held away from
+IMC 270 — a floating embedded tutor sitting in a class, or an open lab in another room — are
+[listed beside the calendar](#embedded-classes-and-open-labs) rather than drawn in it.
 
 **Live version:** https://calebhendren.github.io/scheduler/
 **Offline version:** download `scheduler-local.html` from the
@@ -17,10 +20,10 @@ and post — with a QR code to tutor.com for the hours nobody is on shift.
 ## Getting started
 
 1. Open the site (or the single-file version) in any modern browser.
-2. Click **Load sample roster** to see how it works, or **Add tutor** to start your own.
-   The sample is ten tutors, each approved for 15 hours, who between them handed in 80
-   hours of availability — a couple offering the full 15, most a few afternoons, one or two
-   a single shift.
+2. Click **Load sample roster**, at the bottom of **Schedule settings**, to see how it works —
+   or **Add tutor** to start your own. The sample is ten tutors, each approved for 15 hours,
+   who between them handed in 80 hours of availability — a couple offering the full 15, most a
+   few afternoons, one or two a single shift.
 3. For each tutor: first and last name, the class checkboxes, their approved weekly hours
    (15 by default), and their availability.
 4. Fill the week in whichever way suits you — see [Three ways to place a
@@ -48,6 +51,20 @@ Auto-optimize is one option, not the only one. Nothing here needs it.
 - **The whole week at once.** **Auto-optimize** rebuilds the entire schedule from scratch.
   Locked shifts survive it; everything else is fair game, so it is the wrong button to press
   once people have been told what they are working.
+
+Two shifts for the same tutor that touch are one shift. Give Anna 9:00–11:00 and then
+11:00–2:00 and you get a single 9:00–2:00 block, whether you drew the second one, typed it, or
+dragged it up against the first. A locked shift is never absorbed, and neither is one held in a
+different room. What the merge cannot do is get around the break rule: a shift that would join
+two others into six unbroken hours is refused before it is placed, and told to leave 30
+minutes somewhere.
+
+## Editing a shift
+
+Drag a block to move it and drag its edge to resize it. For everything a drag cannot express —
+which tutor works it, and whether it is at the center, an embedded class or an open lab — hover
+the block and press **✎**. Rows in the list beside the calendar have their own **Edit**, since
+they have no block to drag.
 
 ## Removing a shift
 
@@ -80,6 +97,51 @@ press.
 
 Each button turns into its own undo (**Unlock all**) when everything under it is locked.
 
+## Embedded classes and open labs
+
+Not every hour a tutor works is an hour at the tutoring center, and the two are not
+interchangeable. A shift is one of three things, set under **Where** when you add or edit it:
+
+- **At the tutoring center** — IMC 270, or whatever **Location** says. This is the main
+  calendar, and the only thing coverage means.
+- **Floating embedded tutor** — the tutor sits in the class as it is taught, in the classroom.
+- **Open lab** — held in its own room.
+
+The last two ask for a room number (`OMN 286`) and are listed under **Away from the center**
+beside the calendar, grouped by kind, rather than drawn as blocks. On the handout they become a
+line under the grid — *Bailey Tue & Thu 12:30–2:00 PM floating embedded tutor (OMN 286)* — the
+same footnote the old paper schedules carried. The page-2 listing keeps them in with everything
+else, so it stays a complete record.
+
+What they change:
+
+- **The concurrency cap counts the center only.** One tutor at the desk and a floating tutor
+  across the hall is one tutor at the desk, so a second can still be scheduled there. This is
+  the whole point: an embedded tutor should not eat a seat in a room they are not in.
+- **They are not coverage.** An hour worked only by an embedded tutor is an empty hour at the
+  center, and **Uncovered time** says so — *Every available tutor is in a class or an open lab*,
+  which is a different problem from a cap or a budget, and a different fix.
+- **They are still the tutor's hours.** They count against the weekly cap, the daily limit, the
+  break rule and the hour budget, and nobody is ever scheduled at the center while they are
+  teaching. The toolbar reports them separately as **Classes & labs**.
+- **Auto-optimize will not invent one.** They are tied to a real class in a real room, so you
+  place them. The optimizer treats them as fixed — never moved, never removed, always worked
+  around — whether or not they are locked.
+
+## The classes you tutor
+
+Under **Schedule settings → Classes**. Each class has a full name, which the handout spells
+out, and a short code, which is what fits on a block. Press **Add class** for another —
+Chemistry, say — then type over the placeholder name and code.
+
+Renaming a class keeps every tutor already marked for it. Removing one asks first, and says how
+many tutors it un-marks; **Ctrl+Z** brings both the class and those marks back. A schedule keeps
+at least one class, and holds at most sixteen.
+
+The class columns in the CSV follow your list, so a roster exported after adding Chemistry has a
+`CHEM` column. Imports match a column by either its code or its full name, so a file exported
+before a rename still lines up.
+
 ## How the schedule is built
 
 The week is divided into 30-minute slots, Monday to Friday, 7:00 AM to 8:30 PM — 135 slots.
@@ -96,7 +158,8 @@ either one, and the hours they offered are hours the optimizer tries to use.
 | Rule | Default | Where to change it |
 |---|---|---|
 | Inside the tutor's availability | always | — |
-| At most N tutors at once | 2 | Schedule settings |
+| Never in two places at once | always | — |
+| At most N tutors at the center at once | 2 | Schedule settings |
 | Weekly hours per tutor | 15 | on each tutor |
 | Daily hours per tutor | 8 | Schedule settings, or per tutor |
 | Minimum shift length | 1 hour | Schedule settings |
@@ -131,6 +194,8 @@ and the optimizer has to spend them where they add the most subject breadth.
 The **Uncovered time** panel names the reason, because they call for different fixes:
 
 - **No tutor is available** — you need availability you do not have.
+- **Every available tutor is in a class or an open lab** — the people who could work this hour
+  are already working it somewhere else. Moving a class helps; approving more hours does not.
 - **Every available tutor is at their weekly cap** — someone's hours need raising.
 - **The weekly hour budget is spent** — that is a money question.
 - **Break and shift-length rules block a placement** — usually an awkward 30-minute hole.
@@ -166,11 +231,15 @@ Because storage is per-browser, use **Export** to move between machines or keep 
 
 ### The CSV format
 
-`First, Last, Biology, Microbiology, AP1, AP2, MaxHoursPerWeek, MaxHoursPerDay,
+`First, Last, BIO, MICRO, AP1, AP2, MaxHoursPerWeek, MaxHoursPerDay,
 MinHoursPerWeek, Availability, Notes`
 
-Subject columns take `Yes`/`No`. Availability is written the way you would say it, with days
-sharing the same hours grouped together:
+One column per class, in the order they appear under **Schedule settings → Classes**, headed by
+the short code — add Chemistry and a `CHEM` column appears. An import accepts either the code or
+the full class name as the header, so older files still read. Class columns take `Yes`/`No`.
+
+Availability is written the way you would say it, with days sharing the same hours grouped
+together:
 
 ```
 Mon/Wed/Fri 12:00-17:00
@@ -209,6 +278,10 @@ every handout, and appear in the app header.
 The notes print in a box under the grid — closure dates, the last day of tutoring, anything
 else people need to read off the wall. The default text is the fall 2026 closure schedule; edit
 it for your term.
+
+**Location** names the room the calendar itself is about. Shifts held elsewhere carry their own
+room and print in the **Away from the center** line under the grid, so the handout tells a
+student which door to knock on.
 
 ### The hours a schedule shows
 
@@ -278,10 +351,12 @@ node tools/test-optimizer.mjs     # needs Node 20+
 
 Or open `tools/selftest.html` in a browser, which needs nothing installed. Both run the same
 assertions against the same source files: the display-name rules, contrast in both themes for
-every palette slot, CSV round-tripping and parsing, the ten-tutor fixture with the budget both
-on and off, locked shifts surviving re-optimization, back-to-back shifts coming out as one
-block, fitting a single tutor without moving anyone else, and a randomized fuzz pass that
-asserts no generated schedule ever breaks a hard rule.
+every palette slot, CSV round-tripping and parsing, the class list and the bitmask it drives,
+embedded classes and open labs staying out of coverage while still spending a tutor's hours,
+touching shifts joining into one, the ten-tutor fixture with the budget both on and off, locked
+shifts surviving re-optimization, back-to-back shifts coming out as one block, fitting a single
+tutor without moving anyone else, and a randomized fuzz pass that asserts no generated schedule
+ever breaks a hard rule.
 
 Build the offline single file:
 
@@ -289,12 +364,24 @@ Build the offline single file:
 node tools/bundle.mjs             # writes dist/scheduler-local.html
 ```
 
+### Versioning and releases
+
+The version lives in one place — `VERSION` at the top of `assets/js/util.js` — and the app
+shows it at the bottom of **Schedule settings**. Semantic versioning: a new feature is a minor
+bump, a fix is a patch.
+
+Bumping that line is what publishes a release. When the commit lands on `main`, CI reads it,
+tags `v<version>`, and attaches the single-file build with generated release notes. A push that
+does not bump it refreshes the build on the existing release instead, so nothing is duplicated
+and nothing has to be remembered. Pushing a `v*` tag by hand still works and is checked against
+that same line, so a tag can never disagree with the app inside it.
+
 ### Continuous integration
 
 - `pages.yml` runs the suite, then deploys the site to GitHub Pages on every push to `main`.
   This needs **Settings → Pages → Source → GitHub Actions** switched on once.
-- `release.yml` runs the suite and builds the single-file version on every push, uploading it
-  as a workflow artifact. Pushing a `v*` tag also attaches it to a GitHub release.
+- `release.yml` runs the suite, builds the single-file version on every push and pull request,
+  uploads it as a workflow artifact, and publishes the release described above.
 
 ## License
 

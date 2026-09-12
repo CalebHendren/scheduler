@@ -11,7 +11,7 @@
    * which is exactly what makes the exported PDF tagged and navigable.
    */
   function laneGrid(assignments, day) {
-    var dayBlocks = assignments.filter(function (a) { return a.day === day; });
+    var dayBlocks = U.mainShifts(assignments).filter(function (a) { return a.day === day; });
     var placement = TS.calendar.layoutDay(dayBlocks);
     var lanes = 1;
     dayBlocks.forEach(function (b) {
@@ -61,9 +61,12 @@
 
   function buildTable(state, labels) {
     var dark = false; // print is always light
-    var win = U.scheduleWindow(state.assignments);
+    // The grid is the tutoring center. Embedded classes and open labs are held
+    // elsewhere, so they go in the band underneath instead.
+    var drawn = U.mainShifts(state.assignments);
+    var win = U.scheduleWindow(drawn);
     var days = [];
-    for (var d = 0; d < U.DAYS; d++) days.push(laneGrid(state.assignments, d));
+    for (var d = 0; d < U.DAYS; d++) days.push(laneGrid(drawn, d));
 
     var html = '<table class="pv-table"><caption class="visually-hidden">' +
       'Weekly tutoring schedule, Monday through Friday, ' +
@@ -103,6 +106,28 @@
     return html + '</tbody></table>';
   }
 
+  /* The footnote the old handouts carried: everything happening away from the
+   * center, on one or two lines under the grid. Entries that repeat across days
+   * are collapsed, so a floating tutor with the same Tuesday and Thursday
+   * window reads as one line.
+   */
+  function buildOffRoom(state, labels) {
+    var groups = U.groupOffRoom(state.assignments);
+    if (!groups.length) return '';
+
+    var items = groups.map(function (g) {
+      var tutor = TS.store.getTutor(g.tutorId);
+      if (!tutor) return '';
+      return '<li><strong>' + esc(labels[tutor.id]) + '</strong> ' +
+        esc(U.daysLabel(g.days)) + ' ' + esc(U.formatRange(g.startSlot, g.endSlot)) + ' — ' +
+        esc(U.shiftKind(g.kind).label.toLowerCase()) +
+        ' (' + esc(g.room || 'room TBA') + ')</li>';
+    }).join('');
+
+    return '<section class="pv-offroom"><h2>Away from the center</h2>' +
+      '<ul>' + items + '</ul></section>';
+  }
+
   function buildListing(state, labels) {
     var html = '<section class="pv-listing"><h2>Schedule listing</h2>';
     var any = false;
@@ -122,7 +147,13 @@
         var mask = U.subjectMask(tutor.subjects);
         html += '<li>' + esc(labels[tutor.id]) + ', ' +
           esc(U.formatRange(a.startSlot, a.endSlot)) + ' — ' +
-          esc(U.maskToLabels(mask).join(', ') || 'no subjects assigned') + '</li>';
+          esc(U.maskToLabels(mask).join(', ') || 'no classes assigned') +
+          // The listing is the complete record, so it says where as well as when.
+          (U.offRoom(a)
+            ? ' <em>(' + esc(U.shiftKind(a.kind).label.toLowerCase()) + ', ' +
+              esc(a.room || 'room TBA') + ')</em>'
+            : '') +
+          '</li>';
       });
       html += '</ul></section>';
     }
@@ -166,6 +197,7 @@
           : '') +
       '</header>' +
       buildTable(state, labels) +
+      buildOffRoom(state, labels) +
       (s.notes
         ? '<section class="pv-notes"><h2>Important notes</h2><p>' + esc(s.notes) + '</p></section>'
         : '') +
@@ -181,5 +213,10 @@
       buildListing(state, labels);
   }
 
-  TS.printview = { render: render, laneGrid: laneGrid, buildListing: buildListing };
+  TS.printview = {
+    render: render,
+    laneGrid: laneGrid,
+    buildListing: buildListing,
+    buildOffRoom: buildOffRoom
+  };
 })(typeof window !== 'undefined' ? window : globalThis);
