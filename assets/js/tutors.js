@@ -186,13 +186,17 @@
   }
 
   /* A typed-in shift, for building a schedule by hand without reaching for the
-   * optimizer, and for anyone working without a mouse. */
+   * optimizer, and for anyone working without a mouse. With preset.id it edits
+   * that shift instead of adding one -- which is also the only way to say where
+   * a shift is held, since a drag cannot move a block to another room. */
   function openShiftDialog(state, preset, onSave) {
     closeDialog();
 
     var labels = U.displayNames(state.tutors);
     var start = typeof preset.startSlot === 'number' ? preset.startSlot : 0;
     var end = typeof preset.endSlot === 'number' ? preset.endSlot : Math.min(U.SLOTS_PER_DAY, start + 4);
+    var editing = !!preset.id;
+    var kind = U.shiftKind(preset.kind).key;
 
     var backdrop = el('div', { class: 'dialog-backdrop' });
     var dialog = el('div', {
@@ -201,7 +205,8 @@
     });
 
     dialog.innerHTML =
-      '<div class="dialog__head"><h2 id="shift-dialog-title">Add a shift</h2></div>' +
+      '<div class="dialog__head"><h2 id="shift-dialog-title">' +
+        (editing ? 'Edit shift' : 'Add a shift') + '</h2></div>' +
       '<div class="dialog__body">' +
         '<div class="field"><label for="f-shift-tutor">Tutor</label>' +
           '<select id="f-shift-tutor">' +
@@ -223,11 +228,26 @@
           '<div class="field"><label for="f-shift-end">Ends</label>' +
             '<select id="f-shift-end">' + timeOptions(end, true) + '</select></div>' +
         '</div>' +
+        '<div class="field"><label for="f-shift-kind">Where</label>' +
+          '<select id="f-shift-kind">' +
+            U.SHIFT_KINDS.map(function (k) {
+              return '<option value="' + k.key + '"' + (k.key === kind ? ' selected' : '') + '>' +
+                esc(k.key === 'main' ? state.settings.location || k.label : k.label) + '</option>';
+            }).join('') +
+          '</select>' +
+          '<p class="field__hint">A floating embedded tutor sits in the class as it is taught, ' +
+            'and an open lab is held in its own room. Neither one staffs the tutoring center, ' +
+            'so they are listed beside the calendar instead of drawn in it.</p></div>' +
+        '<div class="field" id="f-shift-room-field"' + (kind === 'main' ? ' hidden' : '') + '>' +
+          '<label for="f-shift-room">Room</label>' +
+          '<input type="text" id="f-shift-room" value="' + esc(preset.room || '') +
+            '" placeholder="OMN 286"></div>' +
         '<p class="field__hint" id="shift-dialog-note"></p>' +
       '</div>' +
       '<div class="dialog__foot">' +
         '<button type="button" class="btn" id="btn-cancel-shift">Cancel</button>' +
-        '<button type="button" class="btn btn--primary" id="btn-save-shift">Add shift</button>' +
+        '<button type="button" class="btn btn--primary" id="btn-save-shift">' +
+          (editing ? 'Save changes' : 'Add shift') + '</button>' +
       '</div>';
 
     backdrop.appendChild(dialog);
@@ -237,13 +257,27 @@
 
     var note = dialog.querySelector('#shift-dialog-note');
 
+    var kindSelect = dialog.querySelector('#f-shift-kind');
+    var roomField = dialog.querySelector('#f-shift-room-field');
+    var roomInput = dialog.querySelector('#f-shift-room');
+
+    kindSelect.addEventListener('change', function () {
+      var offRoom = kindSelect.value !== 'main';
+      roomField.hidden = !offRoom;
+      if (offRoom) roomInput.focus();
+    });
+
     function read() {
-      return {
+      var value = {
+        id: preset.id || null,
         tutorId: dialog.querySelector('#f-shift-tutor').value,
         day: parseInt(dialog.querySelector('#f-shift-day').value, 10),
         startSlot: parseInt(dialog.querySelector('#f-shift-start').value, 10),
-        endSlot: parseInt(dialog.querySelector('#f-shift-end').value, 10)
+        endSlot: parseInt(dialog.querySelector('#f-shift-end').value, 10),
+        kind: kindSelect.value
       };
+      value.room = value.kind === 'main' ? '' : roomInput.value.trim();
+      return value;
     }
 
     dialog.querySelector('#btn-cancel-shift').addEventListener('click', closeDialog);
@@ -251,6 +285,13 @@
       var value = read();
       if (value.endSlot <= value.startSlot) {
         note.textContent = 'The end time has to come after the start time.';
+        return;
+      }
+      // A room off the main calendar has to say which room, or the handout
+      // tells a student to go and find a door number that is not there.
+      if (value.kind !== 'main' && !value.room) {
+        note.textContent = 'Give the room this is held in, like OMN 286.';
+        roomInput.focus();
         return;
       }
       // The caller owns the rules, so it can refuse and leave the dialog open
@@ -267,15 +308,14 @@
     closeDialog();
 
     var isNew = !tutor;
+    var subjects = {};
+    U.SUBJECTS.forEach(function (s) {
+      subjects[s.key] = !!(tutor && tutor.subjects && tutor.subjects[s.key]);
+    });
     var working = {
       firstName: tutor ? tutor.firstName : '',
       lastName: tutor ? tutor.lastName : '',
-      subjects: {
-        bio: !!(tutor && tutor.subjects.bio),
-        micro: !!(tutor && tutor.subjects.micro),
-        ap1: !!(tutor && tutor.subjects.ap1),
-        ap2: !!(tutor && tutor.subjects.ap2)
-      },
+      subjects: subjects,
       maxHoursPerWeek: tutor ? tutor.maxHoursPerWeek : settings.defaultMaxHours,
       maxHoursPerDay: tutor ? tutor.maxHoursPerDay : null,
       minHoursPerWeek: tutor ? tutor.minHoursPerWeek : 0,

@@ -1,4 +1,9 @@
-name: Build single-file version
+name: Build and release the single-file version
+
+# Releases are driven by the version in assets/js/util.js rather than by
+# remembering to push a tag: a commit landing on main that bumps it gets
+# tagged and published, and one that does not simply refreshes the artifact.
+# Pushing a v* tag by hand still works, and is checked against that same line.
 
 on:
   push:
@@ -15,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0        # release notes are generated from the history
 
       - uses: actions/setup-node@v7
         with:
@@ -22,6 +29,22 @@ jobs:
 
       - name: Run the scheduling and accessibility suite
         run: node tools/test-optimizer.mjs
+
+      - name: Read the app version
+        id: version
+        run: |
+          version="$(node -p "require('fs').readFileSync('assets/js/util.js','utf8').match(/VERSION = '([^']+)'/)[1]")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "assets/js/util.js declares version ${version}"
+
+      - name: Check a hand-pushed tag matches that version
+        if: github.ref_type == 'tag'
+        run: |
+          declared="v${{ steps.version.outputs.version }}"
+          if [ "${declared}" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match ${declared} in assets/js/util.js." >&2
+            exit 1
+          fi
 
       - name: Build the offline single-file app
         run: node tools/bundle.mjs
@@ -33,14 +56,31 @@ jobs:
           path: dist/scheduler-local.html
           if-no-files-found: error
 
-      # Tags additionally publish the file as a downloadable release asset.
-      - name: Attach to the release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish the release
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "${GITHUB_REF_NAME}" \
-            --notes "Offline single-file build of the tutor scheduler. Download scheduler-local.html and open it in any browser." \
-            dist/scheduler-local.html \
-          || gh release upload "${GITHUB_REF_NAME}" dist/scheduler-local.html --clobber
+          tag="v${VERSION}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then tag="${GITHUB_REF_NAME}"; fi
+
+          cat > release-notes.md <<'NOTES'
+          Offline single-file build of the Life Science Tutor Schedule.
+
+          Download `scheduler-local.html` and open it in any browser. It needs no
+          server and no network, and it keeps your work in that browser's storage.
+          NOTES
+
+          # An existing release means the version was not bumped, so the build is
+          # refreshed in place rather than failing the run.
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "Release ${tag} already exists; replacing its build."
+            gh release upload "${tag}" dist/scheduler-local.html --clobber
+          else
+            gh release create "${tag}" \
+              --title "${tag}" \
+              --notes-file release-notes.md \
+              --generate-notes \
+              dist/scheduler-local.html
+          fi

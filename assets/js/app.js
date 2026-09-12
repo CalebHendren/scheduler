@@ -94,6 +94,10 @@
       ' h</strong></span>');
     parts.push('<span class="stats__item">Coverage <strong>' +
       st.coveredSlots + ' / ' + st.totalSlots + '</strong></span>');
+    if (st.offRoomHours) {
+      parts.push('<span class="stats__item">Classes &amp; labs <strong>' +
+        st.offRoomHours.toFixed(1) + ' h</strong></span>');
+    }
     parts.push('<span class="stats__item">Doubled <strong>' + st.doubledHours.toFixed(1) + ' h</strong></span>');
     parts.push('<span class="stats__item">Subjects/hour <strong>' + st.avgSubjects.toFixed(2) + '</strong></span>');
     if (st.overCapacitySlots) {
@@ -122,6 +126,7 @@
     'add-tutor': 'adding a tutor', 'edit-tutor': 'editing a tutor',
     'remove-tutor': 'removing a tutor', 'add-shift': 'adding a shift',
     'move': 'moving a shift', 'remove': 'removing a shift',
+    'edit-shift': 'editing a shift', 'classes': 'a change to the class list',
     'lock': 'locking a shift', 'lock-tutor': 'locking a tutor’s shifts',
     'lock-all': 'locking every shift', 'fit-tutor': 'auto-fitting a tutor',
     optimize: 'auto-optimizing', clear: 'clearing the schedule',
@@ -165,8 +170,8 @@
         'shaded column to place one. Esc when you are done.';
     } else {
       hint.textContent = 'Drag a block to move it, drag its edge to resize. ' +
-        'Hover one to lock or remove it, or press L or Delete. ' +
-        'Pick a tutor’s “Add shifts” to draw new ones.';
+        'Hover one to edit, lock or remove it, or press L or Delete. ' +
+        'Editing is where you say a shift is an embedded class or an open lab.';
     }
   }
 
@@ -183,6 +188,11 @@
       selectedId: selectedTutorId
     });
     TS.calendar.render($('calendar'), state, { selectedTutorId: selectedTutorId });
+    TS.calendar.renderAside($('offroom'), state, {
+      onEdit: editShift,
+      onRemove: removeShiftById,
+      onLock: setShiftLock
+    });
     renderCalendarHint(state);
     renderLockAll(state);
     renderUndo();
@@ -287,9 +297,12 @@
 
   // One place decides whether a hand-placed shift is allowed, so the dialog and
   // the drag path can never disagree about the rules.
-  function placeShift(tutorId, day, start, end) {
+  function placeShift(tutorId, day, start, end, kind, room) {
     var state = TS.store.state;
-    var candidate = { id: null, tutorId: tutorId, day: day, startSlot: start, endSlot: end };
+    var candidate = {
+      id: null, tutorId: tutorId, day: day, startSlot: start, endSlot: end,
+      kind: U.shiftKind(kind).key, room: room || ''
+    };
     var check = TS.calendar.checkPlacement(state, candidate, day, start, end);
     if (!check.ok) return check.reason;
 
@@ -302,15 +315,28 @@
 
     TS.store.addAssignment({
       tutorId: tutorId, day: day, startSlot: start, endSlot: end,
+      kind: candidate.kind, room: candidate.room,
       locked: false, overCapacity: !!check.overCapacity
     });
+    var joined = TS.store.mergeTouching(tutorId, day);
     TS.store.commit('add-shift');
+
+    if (joined) {
+      var grown = null;
+      TS.store.state.assignments.forEach(function (a) {
+        if (a.tutorId === tutorId && a.day === day &&
+            a.startSlot <= start && a.endSlot >= end) grown = a;
+      });
+      var tutor = TS.store.getTutor(tutorId);
+      notice('Joined onto the shift next to it — ' + tutor.firstName + ' now works ' +
+        U.DAY_NAMES[day] + ' ' + U.formatRange(grown.startSlot, grown.endSlot) + '.', 'info');
+    }
     return null;
   }
 
   function createFromDrag(day, start, end) {
     if (!selectedTutorId) return;
-    var problem = placeShift(selectedTutorId, day, start, end);
+    var problem = placeShift(selectedTutorId, day, start, end, 'main', '');
     if (problem) notice(problem, 'warn');
   }
 
@@ -322,8 +348,69 @@
     }
     TS.tutors.openShiftDialog(state, { tutorId: selectedTutorId || state.tutors[0].id, day: 0 },
       function (value) {
-        return placeShift(value.tutorId, value.day, value.startSlot, value.endSlot);
+        return placeShift(value.tutorId, value.day, value.startSlot, value.endSlot,
+          value.kind, value.room);
       });
+  }
+
+  /* Editing one shift in the dialog. Times and days can be dragged on the
+   * calendar, but which tutor works it and which room it is held in cannot,
+   * and a shift away from the center has no block to drag in the first place.
+   */
+  function editShift(id) {
+    var state = TS.store.state;
+    var a = TS.store.getAssignment(id);
+    if (!a) return;
+    if (a.locked) {
+      notice('That shift is locked. Unlock it first if you want to change it.', 'warn');
+      return;
+    }
+    TS.tutors.openShiftDialog(state, a, function (value) {
+      var check = TS.calendar.checkPlacement(state, value, value.day, value.startSlot, value.endSlot);
+      if (!check.ok) return check.reason;
+      if (check.overCapacity && !root.confirm(
+        'That puts more than ' + state.settings.maxConcurrent + ' tutors at the center at once for ' +
+        (check.overSlots / 2) + ' hour(s).\n\nSave it anyway? It will be flagged on the schedule.'
+      )) {
+        return 'Cancelled — nothing was changed.';
+      }
+
+      a.tutorId = value.tutorId;
+      a.day = value.day;
+      a.startSlot = value.startSlot;
+      a.endSlot = value.endSlot;
+      a.kind = value.kind;
+      a.room = value.room;
+      a.overCapacity = !!check.overCapacity;
+      TS.store.mergeTouching(a.tutorId, a.day);
+      TS.store.commit('edit-shift');
+      return null;
+    });
+  }
+
+  function removeShiftById(id) {
+    var a = TS.store.getAssignment(id);
+    if (!a) return;
+    if (a.locked) {
+      notice('That shift is locked. Unlock it first if you want it gone.', 'warn');
+      return;
+    }
+    var tutor = TS.store.getTutor(a.tutorId);
+    var who = tutor ? tutor.firstName : 'That shift';
+    TS.store.removeAssignment(id);
+    TS.store.commit('remove');
+    notice('Removed ' + who + ', ' + U.DAY_NAMES[a.day] + ' ' +
+      U.formatRange(a.startSlot, a.endSlot) + '. Ctrl+Z brings it back.', 'info');
+  }
+
+  function setShiftLock(id, locked) {
+    var a = TS.store.getAssignment(id);
+    if (!a || a.locked === locked) return;
+    a.locked = locked;
+    TS.store.commit('lock');
+    notice(locked
+      ? 'Shift locked. Auto-optimize will leave it exactly where it is.'
+      : 'Shift unlocked.', 'info');
   }
 
   function fitTutor(id) {
@@ -446,7 +533,9 @@
     { key: 'effective', label: 'Effective dates', type: 'text', placeholder: 'Aug 24 – Dec 11' },
     { key: 'notes', label: 'Important notes', type: 'textarea',
       placeholder: 'Closures, the last day of tutoring, anything else on the handout' },
-    { key: 'location', label: 'Location', type: 'text' },
+    { key: 'location', label: 'Location (the main calendar)', type: 'text',
+      hint: 'The room the weekly calendar is about. Embedded classes and open labs carry ' +
+        'their own room, set on the shift itself.' },
     { key: 'contactName', label: 'Contact name', type: 'text',
       placeholder: 'Who to ask about the schedule' },
     { key: 'contactEmail', label: 'Contact email', type: 'email',
@@ -464,7 +553,11 @@
 
   function renderSettings(state) {
     var body = $('settings-body');
-    if (doc.activeElement && body.contains(doc.activeElement)) return; // don't fight the user mid-edit
+    // Don't fight the user mid-edit -- but only a half-typed field is at risk,
+    // and a button press (adding a class, say) has to be able to redraw.
+    var active = doc.activeElement;
+    if (active && body.contains(active) &&
+        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
 
     var s = state.settings;
     var html = '';
@@ -477,8 +570,28 @@
               esc(s[f.key]) + '</textarea>'
           : '<input type="' + f.type + '" id="set-' + f.key + '" data-setting="' + f.key +
               '" value="' + esc(s[f.key]) + '"' + ph + '>') +
+        (f.hint ? '<p class="field__hint">' + esc(f.hint) + '</p>' : '') +
         '</div>';
     });
+
+    html += '<fieldset><legend>Classes</legend>' +
+      '<p class="field__hint" style="margin-top:0">What the tutors are here to help with. ' +
+      'The short code is what fits on a block; the name is what the handout spells out.</p>' +
+      '<ul class="classes" id="class-list">' +
+      s.subjects.map(function (c) {
+        return '<li>' +
+          '<input type="text" data-class-key="' + esc(c.key) + '" data-class-field="label" ' +
+            'value="' + esc(c.label) + '" aria-label="Class name">' +
+          '<input type="text" data-class-key="' + esc(c.key) + '" data-class-field="short" ' +
+            'value="' + esc(c.short) + '" aria-label="Short code" class="classes__short">' +
+          '<button type="button" class="btn btn--small btn--danger" data-remove-class="' +
+            esc(c.key) + '" aria-label="Remove ' + esc(c.label) + '">×</button>' +
+          '</li>';
+      }).join('') +
+      '</ul>' +
+      '<button type="button" class="btn btn--small" id="btn-add-class"' +
+        (s.subjects.length >= U.MAX_SUBJECTS ? ' disabled' : '') + '>Add class</button>' +
+      '</fieldset>';
 
     html += '<fieldset><legend>Scheduling rules</legend><div class="grid-2">';
     RULE_FIELDS.forEach(function (f) {
@@ -523,6 +636,21 @@
       var key = t.getAttribute('data-setting');
       var numKey = t.getAttribute('data-setting-num');
       var boolKey = t.getAttribute('data-setting-bool');
+      var classKey = t.getAttribute('data-class-key');
+
+      if (classKey) {
+        // The key stays put while the wording changes, so renaming a class
+        // keeps every tutor who could already teach it.
+        var found = null;
+        s.subjects.forEach(function (c) { if (c.key === classKey) found = c; });
+        if (!found) return;
+        var field = t.getAttribute('data-class-field');
+        var text = t.value.trim();
+        if (!text) { t.value = found[field]; return; }
+        found[field] = text;
+        TS.store.commit('classes');
+        return;
+      }
 
       if (key) s[key] = t.value;
       else if (numKey) s[numKey] = parseFloat(t.value) || 0;
@@ -531,12 +659,54 @@
 
       TS.store.commit('settings');
     });
+
+    $('settings-body').addEventListener('click', function (e) {
+      var s = TS.store.state.settings;
+
+      if (e.target.id === 'btn-add-class') {
+        if (s.subjects.length >= U.MAX_SUBJECTS) {
+          notice('That is as many classes as a schedule can hold.', 'warn');
+          return;
+        }
+        s.subjects.push({ key: U.subjectKey(U.uid('class')), short: 'NEW', label: 'New class' });
+        TS.store.commit('classes');
+        var added = $('settings-body').querySelector('.classes li:last-child input');
+        if (added) { added.focus(); added.select(); }
+        return;
+      }
+
+      var removeBtn = e.target.closest('[data-remove-class]');
+      if (!removeBtn) return;
+
+      var doomedKey = removeBtn.getAttribute('data-remove-class');
+      var doomed = null;
+      s.subjects.forEach(function (c) { if (c.key === doomedKey) doomed = c; });
+      if (!doomed) return;
+      if (s.subjects.length === 1) {
+        notice('A schedule needs at least one class. Rename this one instead.', 'warn');
+        return;
+      }
+
+      // Tutors marked for the class are what makes this worth confirming: the
+      // schedule loses a reason each of them was on it.
+      var marked = TS.store.state.tutors.filter(function (t) { return t.subjects[doomedKey]; });
+      if (!root.confirm('Remove ' + doomed.label +
+          (marked.length ? ' and un-mark the ' + marked.length + ' tutor(s) who teach it' : '') +
+          '?')) return;
+
+      s.subjects = s.subjects.filter(function (c) { return c.key !== doomedKey; });
+      marked.forEach(function (t) { delete t.subjects[doomedKey]; });
+      TS.store.commit('classes');
+      notice(doomed.label + ' removed' +
+        (marked.length ? ', and un-marked for ' + marked.length + ' tutor(s)' : '') +
+        '. Ctrl+Z brings it back.', 'info');
+    });
   }
 
   /* ---- import / export --------------------------------------------------- */
 
   function exportJson() {
-    downloadText('tutor-schedule.json', TS.store.toJson(), 'application/json');
+    downloadText('life-science-tutor-schedule.json', TS.store.toJson(), 'application/json');
   }
 
   function importJson() {
@@ -661,6 +831,7 @@
       onChange: renderAll,
       onNotice: notice,
       onCreate: createFromDrag,
+      onEdit: editShift,
       getSelectedTutorId: function () { return selectedTutorId; }
     });
 
@@ -693,6 +864,7 @@
 
   function boot() {
     var loaded = TS.store.load();
+    $('app-version').textContent = 'Version ' + U.VERSION + '.';
     TS.theme.init(TS.store.state.settings.theme);
     $('theme-select').value = TS.store.state.settings.theme;
 

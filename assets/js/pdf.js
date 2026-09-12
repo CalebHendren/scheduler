@@ -47,6 +47,20 @@
     }
   }
 
+  /* Everything held away from the center, as one run of text. The same
+   * footnote the old handouts carried, and cheap enough on a crowded page:
+   * "Bailey Tue & Thu 12:30-2:00 PM floating embedded tutor (OMN 286)".
+   */
+  function offRoomLine(state, labels) {
+    return U.groupOffRoom(state.assignments).map(function (g) {
+      var tutor = TS.store.getTutor(g.tutorId);
+      if (!tutor) return '';
+      return labels[tutor.id] + ' ' + U.daysLabel(g.days) + ' ' +
+        U.formatRange(g.startSlot, g.endSlot) + ' ' +
+        U.shiftKind(g.kind).label.toLowerCase() + ' (' + (g.room || 'room TBA') + ')';
+    }).filter(function (line) { return !!line; }).join('  ·  ');
+  }
+
   // Building and saving are separate so the document can be inspected without
   // triggering a download.
   function build(state) {
@@ -62,7 +76,7 @@
       title: s.title + (s.term ? ' — ' + s.term : ''),
       subject: 'Weekly tutoring schedule, ' + s.location,
       author: s.contactName,
-      creator: 'Chatt State Tutor Scheduler'
+      creator: 'Chatt State Tutor Scheduler ' + U.VERSION
     });
     if (pdf.setLanguage) pdf.setLanguage('en-US');
 
@@ -114,17 +128,30 @@
     pdf.line(margin, whereY + 7, pageW - margin, whereY + 7);
 
     /* ---- grid geometry ---- */
-    var win = U.scheduleWindow(state.assignments);
+    // The grid is the tutoring center; embedded classes and open labs are
+    // listed in their own band under it.
+    var drawn = U.mainShifts(state.assignments);
+    var win = U.scheduleWindow(drawn);
     var slotCount = win.end - win.start;
 
     var gridTop = whereY + 18;
     // The notes band is measured before the grid is laid out, so a long note
-    // shortens the grid rather than running off the page.
+    // shortens the grid rather than running off the page. The away-from-the-
+    // center band is measured the same way, for the same reason.
     var noteLines = s.notes
       ? pdf.splitTextToSize(s.notes, pageW - margin * 2 - 12)
       : [];
     var noteH = noteLines.length ? 16 + noteLines.length * 9 : 0;
-    var footH = 92 + noteH;
+
+    var awayText = offRoomLine(state, labels);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    var awayLines = awayText
+      ? pdf.splitTextToSize(awayText, pageW - margin * 2 - 100)
+      : [];
+    var awayH = awayLines.length ? 14 + awayLines.length * 9 : 0;
+
+    var footH = 92 + noteH + awayH;
     var gridBottom = pageH - margin - footH;
     var headH = 15;
     var gutterW = 44;
@@ -170,7 +197,7 @@
 
     /* ---- blocks ---- */
     for (var day = 0; day < U.DAYS; day++) {
-      var dayBlocks = state.assignments.filter(function (a) { return a.day === day; });
+      var dayBlocks = drawn.filter(function (a) { return a.day === day; });
       var placement = TS.calendar.layoutDay(dayBlocks);
 
       dayBlocks.forEach(function (a) {
@@ -235,9 +262,25 @@
     pdf.setDrawColor(NAVY[0], NAVY[1], NAVY[2]);
     pdf.line(margin + gutterW, gridEnd, pageW - margin, gridEnd);
 
+    /* ---- away from the center ---- */
+    if (awayLines.length) {
+      var awayTop = gridEnd + 8;
+      pdf.setFont('times', 'bold');
+      pdf.setFontSize(9);
+      pdf.setTextColor(0, 40, 85);
+      pdf.text('Away from the center:', margin, awayTop + 9);
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
+      pdf.setTextColor(INK[0], INK[1], INK[2]);
+      awayLines.forEach(function (line, i) {
+        pdf.text(line, margin + 96, awayTop + 9 + i * 9);
+      });
+    }
+
     /* ---- important notes ---- */
     if (noteLines.length) {
-      var noteTop = gridEnd + 10;
+      var noteTop = gridEnd + 10 + awayH;
       pdf.setFillColor(252, 250, 247);
       pdf.setDrawColor(NAVY[0], NAVY[1], NAVY[2]);
       pdf.setLineWidth(0.5);
@@ -259,7 +302,7 @@
     }
 
     /* ---- footer: QR, url, legend ---- */
-    var footY = gridBottom + 12 + noteH;
+    var footY = gridBottom + 12 + noteH + awayH;
     pdf.setDrawColor(RULE[0], RULE[1], RULE[2]);
     pdf.setLineWidth(0.6);
     pdf.line(margin, footY - 8, pageW - margin, footY - 8);
@@ -341,7 +384,10 @@
         if (y2 > pageH - margin - 10) { pdf.addPage(); y2 = margin + 20; }
         pdf.text(
           labels[tutor.id] + ', ' + U.formatRange(a.startSlot, a.endSlot) + ' — ' +
-          (U.maskToLabels(U.subjectMask(tutor.subjects)).join(', ') || 'no subjects assigned'),
+          (U.maskToLabels(U.subjectMask(tutor.subjects)).join(', ') || 'no classes assigned') +
+          (U.offRoom(a)
+            ? ' (' + U.shiftKind(a.kind).label.toLowerCase() + ', ' + (a.room || 'room TBA') + ')'
+            : ''),
           margin + 8, y2
         );
       });
@@ -353,7 +399,7 @@
       pdf.text('No shifts are scheduled yet.', margin, y2 + 18);
     }
 
-    var name = 'tutor-schedule' +
+    var name = 'life-science-tutor-schedule' +
       (s.term ? '-' + s.term.replace(/\s+/g, '-').toLowerCase() : '') + '.pdf';
     return { pdf: pdf, filename: name };
   }

@@ -3,10 +3,20 @@
   var TS = (root.TS = root.TS || {});
   var U = TS.util;
 
-  var COLUMNS = [
-    'First', 'Last', 'Biology', 'Microbiology', 'AP1', 'AP2',
+  var TAIL_COLUMNS = [
     'MaxHoursPerWeek', 'MaxHoursPerDay', 'MinHoursPerWeek', 'Availability', 'Notes'
   ];
+
+  /* One column per class, so a spreadsheet follows whatever classes the
+   * schedule is set up for. The short code is the header, and an import
+   * accepts either the code or the full name -- a file exported before a class
+   * was renamed still lines up.
+   */
+  function columnsFor(subjects) {
+    return ['First', 'Last']
+      .concat((subjects || U.SUBJECTS).map(function (s) { return s.short; }))
+      .concat(TAIL_COLUMNS);
+  }
 
   /* ---- RFC 4180 encode / decode ---------------------------------------- */
 
@@ -234,29 +244,30 @@
   }
 
   function exportTutors(tutors) {
-    var rows = [COLUMNS.slice()];
+    var classes = U.SUBJECTS.slice();
+    var rows = [columnsFor(classes)];
     tutors.forEach(function (t) {
-      rows.push([
-        t.firstName,
-        t.lastName,
-        t.subjects.bio ? 'Yes' : 'No',
-        t.subjects.micro ? 'Yes' : 'No',
-        t.subjects.ap1 ? 'Yes' : 'No',
-        t.subjects.ap2 ? 'Yes' : 'No',
-        t.maxHoursPerWeek,
-        typeof t.maxHoursPerDay === 'number' ? t.maxHoursPerDay : '',
-        t.minHoursPerWeek || 0,
-        formatAvailability(t.availability),
-        t.notes || ''
-      ]);
+      rows.push([t.firstName, t.lastName]
+        .concat(classes.map(function (c) { return t.subjects[c.key] ? 'Yes' : 'No'; }))
+        .concat([
+          t.maxHoursPerWeek,
+          typeof t.maxHoursPerDay === 'number' ? t.maxHoursPerDay : '',
+          t.minHoursPerWeek || 0,
+          formatAvailability(t.availability),
+          t.notes || ''
+        ]));
     });
     return encodeRows(rows);
+  }
+
+  function normalizeHeader(name) {
+    return String(name).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   }
 
   function headerIndex(header) {
     var map = {};
     header.forEach(function (name, i) {
-      map[String(name).trim().toLowerCase().replace(/[^a-z0-9]/g, '')] = i;
+      map[normalizeHeader(name)] = i;
     });
     return map;
   }
@@ -280,6 +291,14 @@
       return i === undefined ? '' : String(row[i] === undefined ? '' : row[i]).trim();
     }
 
+    // A class is found by its short code or by its full name, whichever the
+    // file happens to use in the header.
+    var classes = U.SUBJECTS.map(function (c) {
+      var byShort = normalizeHeader(c.short);
+      var byLabel = normalizeHeader(c.label);
+      return { key: c.key, header: map[byShort] !== undefined ? byShort : byLabel };
+    });
+
     for (var r = 1; r < rows.length; r++) {
       var row = rows[r];
       var lineNo = r + 1;
@@ -298,15 +317,17 @@
       var maxDay = parseFloat(cell(row, 'maxhoursperday'));
       var minWeek = parseFloat(cell(row, 'minhoursperweek'));
 
+      var subjects = {};
+      var marked = 0;
+      classes.forEach(function (c) {
+        subjects[c.key] = truthy(cell(row, c.header));
+        if (subjects[c.key]) marked++;
+      });
+
       tutors.push({
         firstName: first,
         lastName: cell(row, 'last'),
-        subjects: {
-          bio: truthy(cell(row, 'biology')),
-          micro: truthy(cell(row, 'microbiology')),
-          ap1: truthy(cell(row, 'ap1')),
-          ap2: truthy(cell(row, 'ap2'))
-        },
+        subjects: subjects,
         maxHoursPerWeek: isFinite(maxWeek) ? maxWeek : 15,
         maxHoursPerDay: isFinite(maxDay) ? maxDay : null,
         minHoursPerWeek: isFinite(minWeek) ? minWeek : 0,
@@ -314,12 +335,10 @@
         notes: cell(row, 'notes')
       });
 
-      var mask = 0;
-      if (truthy(cell(row, 'biology'))) mask++;
-      if (truthy(cell(row, 'microbiology'))) mask++;
-      if (truthy(cell(row, 'ap1'))) mask++;
-      if (truthy(cell(row, 'ap2'))) mask++;
-      if (!mask) rowWarnings.push('Row ' + lineNo + ' (' + first + '): no subjects checked, so they cannot be scheduled.');
+      if (!marked) {
+        rowWarnings.push('Row ' + lineNo + ' (' + first +
+          '): no classes checked, so they cannot be scheduled.');
+      }
 
       warnings = warnings.concat(rowWarnings);
     }
@@ -327,16 +346,28 @@
     return { tutors: tutors, warnings: warnings };
   }
 
+  /* Two filled-in rows, because an empty template leaves the reader guessing
+   * what "Availability" is supposed to look like. The class answers follow
+   * whatever classes the schedule has: the first tutor teaches the last two,
+   * the second the first one.
+   */
   function templateCsv() {
+    var classes = U.SUBJECTS.slice();
+    function answers(picked) {
+      return classes.map(function (c, i) { return picked(i) ? 'Yes' : 'No'; });
+    }
     return encodeRows([
-      COLUMNS.slice(),
-      ['Anna', 'Harden', 'No', 'No', 'Yes', 'Yes', 15, '', 0, 'Mon/Wed/Fri 12:00-17:00', ''],
-      ['Marcus', 'Bell', 'Yes', 'No', 'No', 'No', 15, '', 0, 'Mon-Thu 08:00-13:00', '']
+      columnsFor(classes),
+      ['Anna', 'Harden'].concat(answers(function (i) { return i >= classes.length - 2; }))
+        .concat([15, '', 0, 'Mon/Wed/Fri 12:00-17:00', '']),
+      ['Marcus', 'Bell'].concat(answers(function (i) { return i === 0; }))
+        .concat([15, '', 0, 'Mon-Thu 08:00-13:00', ''])
     ]);
   }
 
   TS.csv = {
-    COLUMNS: COLUMNS,
+    columnsFor: columnsFor,
+    TAIL_COLUMNS: TAIL_COLUMNS,
     encodeRows: encodeRows,
     parseRows: parseRows,
     formatAvailability: formatAvailability,
