@@ -450,13 +450,16 @@ legend { font-weight: 700; font-size: 13px; padding: 0 5px; }
   max-height: calc(100vh - 200px);
   overflow: auto;
 }
-.offroom__title { font-family: var(--serif); font-size: 15px; margin: 0 0 8px; }
-.offroom__empty { margin: 0; color: var(--ink-muted); font-size: 12.5px; line-height: 1.5; }
+.offroom__empty { margin: 0 0 4px; color: var(--ink-muted); font-size: 12.5px; }
+.offroom__head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px; margin: 14px 0 6px;
+}
+.offroom__head:first-child { margin-top: 0; }
 .offroom__kind {
   font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
-  color: var(--ink-muted); margin: 12px 0 5px;
+  color: var(--ink-muted); margin: 0;
 }
-.offroom__kind:first-child { margin-top: 0; }
 .offroom__list { list-style: none; margin: 0; padding: 0; }
 .offroom__item {
   border: 1px solid rgba(0, 0, 0, .22); border-left-width: 5px;
