@@ -84,8 +84,8 @@
   var SHIFT_KINDS = [
     { key: 'main', label: 'At the tutoring center', short: '', plural: '' },
     { key: 'embedded', label: 'Floating embedded tutor', short: 'Embedded',
-      plural: 'Floating embedded tutors' },
-    { key: 'lab', label: 'Open lab', short: 'Open lab', plural: 'Open labs' }
+      plural: 'Floating Embedded Tutors' },
+    { key: 'lab', label: 'Open lab', short: 'Open lab', plural: 'Open Labs' }
   ];
 
   function shiftKind(key) {

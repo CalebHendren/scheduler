@@ -47,18 +47,24 @@
     }
   }
 
-  /* Everything held away from the center, as one run of text. The same
-   * footnote the old handouts carried, and cheap enough on a crowded page:
-   * "Bailey Tue & Thu 12:30-2:00 PM floating embedded tutor (OMN 286)".
+  /* Each kind held somewhere other than the center, as one labelled run of
+   * text. The same footnote the old handouts carried, and cheap enough on a
+   * crowded page: "Floating Embedded Tutors: Bailey Tue & Thu 12:30-2:00 PM
+   * (OMN 286)".
    */
-  function offRoomLine(state, labels) {
-    return U.groupOffRoom(state.assignments).map(function (g) {
-      var tutor = TS.store.getTutor(g.tutorId);
-      if (!tutor) return '';
-      return labels[tutor.id] + ' ' + U.daysLabel(g.days) + ' ' +
-        U.formatRange(g.startSlot, g.endSlot) + ' ' +
-        U.shiftKind(g.kind).label.toLowerCase() + ' (' + (g.room || 'room TBA') + ')';
-    }).filter(function (line) { return !!line; }).join('  ·  ');
+  function offRoomRuns(state, labels) {
+    var groups = U.groupOffRoom(state.assignments);
+    return U.SHIFT_KINDS.map(function (kind) {
+      if (kind.key === 'main') return null;
+      var text = groups.filter(function (g) { return g.kind === kind.key; })
+        .map(function (g) {
+          var tutor = TS.store.getTutor(g.tutorId);
+          if (!tutor) return '';
+          return labels[tutor.id] + ' ' + U.daysLabel(g.days) + ' ' +
+            U.formatRange(g.startSlot, g.endSlot) + ' (' + (g.room || 'room TBA') + ')';
+        }).filter(function (line) { return !!line; }).join('  ·  ');
+      return text ? { label: kind.plural + ':', text: text } : null;
+    }).filter(function (run) { return !!run; });
   }
 
   // Building and saving are separate so the document can be inspected without
@@ -136,22 +142,32 @@
 
     var gridTop = whereY + 18;
     // The notes band is measured before the grid is laid out, so a long note
-    // shortens the grid rather than running off the page. The away-from-the-
-    // center band is measured the same way, for the same reason.
+    // shortens the grid rather than running off the page. The band of shifts
+    // held elsewhere is measured the same way, for the same reason.
     var noteLines = s.notes
       ? pdf.splitTextToSize(s.notes, pageW - margin * 2 - 12)
       : [];
     var noteH = noteLines.length ? 16 + noteLines.length * 9 : 0;
 
-    var awayText = offRoomLine(state, labels);
+    // The label column is as wide as the widest kind name, so the entries of
+    // both runs line up whatever the kinds are called.
+    var offRuns = offRoomRuns(state, labels);
+    pdf.setFont('times', 'bold');
+    pdf.setFontSize(9);
+    var offLabelW = 0;
+    offRuns.forEach(function (run) {
+      offLabelW = Math.max(offLabelW, pdf.getTextWidth(run.label) + 8);
+    });
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(8);
-    var awayLines = awayText
-      ? pdf.splitTextToSize(awayText, pageW - margin * 2 - 100)
-      : [];
-    var awayH = awayLines.length ? 14 + awayLines.length * 9 : 0;
+    var offRowCount = 0;
+    offRuns.forEach(function (run) {
+      run.lines = pdf.splitTextToSize(run.text, pageW - margin * 2 - offLabelW);
+      offRowCount += run.lines.length;
+    });
+    var offH = offRowCount ? 14 + offRowCount * 9 : 0;
 
-    var footH = 92 + noteH + awayH;
+    var footH = 92 + noteH + offH;
     var gridBottom = pageH - margin - footH;
     var headH = 15;
     var gutterW = 44;
@@ -262,25 +278,28 @@
     pdf.setDrawColor(NAVY[0], NAVY[1], NAVY[2]);
     pdf.line(margin + gutterW, gridEnd, pageW - margin, gridEnd);
 
-    /* ---- away from the center ---- */
-    if (awayLines.length) {
-      var awayTop = gridEnd + 8;
-      pdf.setFont('times', 'bold');
-      pdf.setFontSize(9);
-      pdf.setTextColor(0, 40, 85);
-      pdf.text('Away from the center:', margin, awayTop + 9);
+    /* ---- floating embedded tutors & open labs ---- */
+    if (offRowCount) {
+      var offY = gridEnd + 17;
+      offRuns.forEach(function (run) {
+        pdf.setFont('times', 'bold');
+        pdf.setFontSize(9);
+        pdf.setTextColor(0, 40, 85);
+        pdf.text(run.label, margin, offY);
 
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(8);
-      pdf.setTextColor(INK[0], INK[1], INK[2]);
-      awayLines.forEach(function (line, i) {
-        pdf.text(line, margin + 96, awayTop + 9 + i * 9);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.setTextColor(INK[0], INK[1], INK[2]);
+        run.lines.forEach(function (line, i) {
+          pdf.text(line, margin + offLabelW, offY + i * 9);
+        });
+        offY += run.lines.length * 9;
       });
     }
 
     /* ---- important notes ---- */
     if (noteLines.length) {
-      var noteTop = gridEnd + 10 + awayH;
+      var noteTop = gridEnd + 10 + offH;
       pdf.setFillColor(252, 250, 247);
       pdf.setDrawColor(NAVY[0], NAVY[1], NAVY[2]);
       pdf.setLineWidth(0.5);
@@ -302,7 +321,7 @@
     }
 
     /* ---- footer: QR, url, legend ---- */
-    var footY = gridBottom + 12 + noteH + awayH;
+    var footY = gridBottom + 12 + noteH + offH;
     pdf.setDrawColor(RULE[0], RULE[1], RULE[2]);
     pdf.setLineWidth(0.6);
     pdf.line(margin, footY - 8, pageW - margin, footY - 8);

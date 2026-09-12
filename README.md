@@ -7,9 +7,10 @@ Anatomy & Physiology I (AP1) and Anatomy & Physiology II (AP2) — and you can
 
 Enter your tutors, check the classes each one can tutor, paint their availability, and press
 **Auto-optimize**. You get a Monday–Friday, 7:00 AM–8:30 PM calendar you can print, hand out,
-and post — with a QR code to tutor.com for the hours nobody is on shift. Shifts held away from
-IMC 270 — a floating embedded tutor sitting in a class, or an open lab in another room — are
-[listed beside the calendar](#embedded-classes-and-open-labs) rather than drawn in it.
+and post — with a QR code to tutor.com for the hours nobody is on shift. Shifts held somewhere
+other than IMC 270 — **Floating Embedded Tutors** sitting in a class, **Open Labs** in another
+room — are [listed beside the calendar](#embedded-classes-and-open-labs) rather than drawn in
+it.
 
 **Live version:** https://calebhendren.github.io/scheduler/
 **Offline version:** download `scheduler-local.html` from the
@@ -107,10 +108,10 @@ interchangeable. A shift is one of three things, set under **Where** when you ad
 - **Floating embedded tutor** — the tutor sits in the class as it is taught, in the classroom.
 - **Open lab** — held in its own room.
 
-The last two ask for a room number (`OMN 286`) and are listed under **Away from the center**
-beside the calendar, grouped by kind, rather than drawn as blocks. On the handout they become a
-line under the grid — *Bailey Tue & Thu 12:30–2:00 PM floating embedded tutor (OMN 286)* — the
-same footnote the old paper schedules carried. The page-2 listing keeps them in with everything
+The last two ask for a room number (`OMN 286`) and are listed beside the calendar under
+**Floating Embedded Tutors** and **Open Labs**, rather than drawn as blocks. On the handout each
+kind becomes a line under the grid — *Floating Embedded Tutors: Bailey Tue & Thu 12:30–2:00 PM
+(OMN 286)* — the same footnote the old paper schedules carried. The page-2 listing keeps them in with everything
 else, so it stays a complete record.
 
 What they change:
@@ -280,8 +281,8 @@ else people need to read off the wall. The default text is the fall 2026 closure
 it for your term.
 
 **Location** names the room the calendar itself is about. Shifts held elsewhere carry their own
-room and print in the **Away from the center** line under the grid, so the handout tells a
-student which door to knock on.
+room and print in the **Floating Embedded Tutors** and **Open Labs** lines under the grid, so
+the handout tells a student which door to knock on.
 
 ### The hours a schedule shows
 
