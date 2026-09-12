@@ -39,18 +39,24 @@
 
     /*
      * Printing always uses the light palette: a dark ground burns toner and
-     * flattens the contrast the PDF is supposed to guarantee. The attribute is
-     * forced for the duration of the print and restored afterwards.
+     * flattens the contrast the PDF is supposed to guarantee. Both the print
+     * events and the print media query are listened to, since not every
+     * browser fires both -- so the override has to be idempotent, and coming
+     * back out of it re-applies the mode the user actually chose. Reading the
+     * attribute back instead meant a second "not printing" from either source
+     * stripped it outright, which dropped an explicit Light to whatever the
+     * system was set to while the Theme select still read Light.
      */
-    var restore = null;
+    var printing = false;
     var beforePrint = function () {
-      restore = root.document.documentElement.getAttribute('data-theme');
+      if (printing) return;
+      printing = true;
       root.document.documentElement.setAttribute('data-theme', 'light');
     };
     var afterPrint = function () {
-      if (restore === null) root.document.documentElement.removeAttribute('data-theme');
-      else root.document.documentElement.setAttribute('data-theme', restore);
-      restore = null;
+      if (!printing) return;
+      printing = false;
+      apply(current);
     };
 
     if (root.addEventListener) {

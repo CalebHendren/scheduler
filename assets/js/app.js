@@ -171,7 +171,7 @@
     } else {
       hint.textContent = 'Drag a block to move it, drag its edge to resize. ' +
         'Hover one to edit, lock or remove it, or press L or Delete. ' +
-        'Editing is where you say a shift is an embedded class or an open lab.';
+        'A class or a lab is an Add away in the list beside the grid.';
     }
   }
 
@@ -191,7 +191,8 @@
     TS.calendar.renderAside($('offroom'), state, {
       onEdit: editShift,
       onRemove: removeShiftById,
-      onLock: setShiftLock
+      onLock: setShiftLock,
+      onAdd: addShiftByDialog
     });
     renderCalendarHint(state);
     renderLockAll(state);
@@ -340,13 +341,19 @@
     if (problem) notice(problem, 'warn');
   }
 
-  function addShiftByDialog() {
+  /* The dialog can place a shift anywhere, so the button over the calendar and
+   * the ones in the list beside it are the same call with a different kind to
+   * start on -- an embedded class or an open lab never needs a shift at the
+   * center first.
+   */
+  function addShiftByDialog(kind) {
     var state = TS.store.state;
     if (!state.tutors.length) {
       notice('Add at least one tutor first, or load the sample roster.', 'warn');
       return;
     }
-    TS.tutors.openShiftDialog(state, { tutorId: selectedTutorId || state.tutors[0].id, day: 0 },
+    TS.tutors.openShiftDialog(state,
+      { tutorId: selectedTutorId || state.tutors[0].id, day: 0, kind: U.shiftKind(kind).key },
       function (value) {
         return placeShift(value.tutorId, value.day, value.startSlot, value.endSlot,
           value.kind, value.room);
@@ -365,6 +372,10 @@
       notice('That shift is locked. Unlock it first if you want to change it.', 'warn');
       return;
     }
+    // Moving a shift out of the center leaves a real hole in it, so the rest of
+    // the week is rebuilt around the newly open time rather than waiting for
+    // someone to notice and press the button.
+    var leavesTheCenter = U.inMainRoom(a);
     TS.tutors.openShiftDialog(state, a, function (value) {
       var check = TS.calendar.checkPlacement(state, value, value.day, value.startSlot, value.endSlot);
       if (!check.ok) return check.reason;
@@ -384,6 +395,11 @@
       a.overCapacity = !!check.overCapacity;
       TS.store.mergeTouching(a.tutorId, a.day);
       TS.store.commit('edit-shift');
+
+      if (leavesTheCenter && U.offRoom(a)) {
+        optimize('Those hours left ' + (state.settings.location || 'the center') +
+          ', so the schedule was rebuilt around the hole.');
+      }
       return null;
     });
   }
@@ -451,7 +467,10 @@
     $('btn-cancel').hidden = !on;
   }
 
-  function optimize() {
+  /* `why` is prefixed to the notice when something other than the button asked
+   * for this, so a schedule that redraws itself says what set it off.
+   */
+  function optimize(why) {
     var state = TS.store.state;
     if (!state.tutors.length) {
       notice('Add at least one tutor first, or load the sample roster.', 'warn');
@@ -470,7 +489,7 @@
     setRunning(true);
     $('progress-text').textContent = 'Building a first schedule…';
 
-    running = { solver: solver, cancelled: false };
+    running = { solver: solver, cancelled: false, why: why || '' };
 
     function tick() {
       if (!running || running.cancelled) return;
@@ -500,6 +519,7 @@
 
   function finishOptimize(solver) {
     var state = TS.store.state;
+    var why = running ? running.why : '';
     state.assignments = solver.result();
     running = null;
     setRunning(false);
@@ -512,7 +532,7 @@
         'error', problems);
       return;
     }
-    notice('Scheduled ' + st.totalHours.toFixed(1) + ' hours covering ' +
+    notice((why ? why + ' ' : '') + 'Scheduled ' + st.totalHours.toFixed(1) + ' hours covering ' +
       st.coveredSlots + ' of ' + st.totalSlots + ' half hours, ' +
       st.doubledHours.toFixed(1) + ' of them with two tutors.', 'info');
   }
@@ -761,7 +781,7 @@
   /* ---- boot -------------------------------------------------------------- */
 
   function wire() {
-    $('btn-optimize').addEventListener('click', optimize);
+    $('btn-optimize').addEventListener('click', function () { optimize(); });
     $('btn-cancel').addEventListener('click', cancelOptimize);
     $('btn-add-tutor').addEventListener('click', addTutor);
     $('btn-lock-all').addEventListener('click', lockEverything);
@@ -825,7 +845,7 @@
       TS.store.commit('theme');
     });
 
-    $('btn-add-shift').addEventListener('click', addShiftByDialog);
+    $('btn-add-shift').addEventListener('click', function () { addShiftByDialog('main'); });
 
     TS.calendar.attach($('calendar'), function () { return TS.store.state; }, {
       onChange: renderAll,

@@ -106,26 +106,32 @@
     return html + '</tbody></table>';
   }
 
-  /* The footnote the old handouts carried: everything happening away from the
-   * center, on one or two lines under the grid. Entries that repeat across days
-   * are collapsed, so a floating tutor with the same Tuesday and Thursday
-   * window reads as one line.
+  /* The footnote the old handouts carried: one line per kind under the grid,
+   * headed by the name of the kind. Entries that repeat across days are
+   * collapsed, so a floating tutor with the same Tuesday and Thursday window
+   * reads as one entry.
    */
   function buildOffRoom(state, labels) {
     var groups = U.groupOffRoom(state.assignments);
     if (!groups.length) return '';
 
-    var items = groups.map(function (g) {
-      var tutor = TS.store.getTutor(g.tutorId);
-      if (!tutor) return '';
-      return '<li><strong>' + esc(labels[tutor.id]) + '</strong> ' +
-        esc(U.daysLabel(g.days)) + ' ' + esc(U.formatRange(g.startSlot, g.endSlot)) + ' — ' +
-        esc(U.shiftKind(g.kind).label.toLowerCase()) +
-        ' (' + esc(g.room || 'room TBA') + ')</li>';
+    var runs = U.SHIFT_KINDS.map(function (kind) {
+      if (kind.key === 'main') return '';
+      var items = groups.filter(function (g) { return g.kind === kind.key; })
+        .map(function (g) {
+          var tutor = TS.store.getTutor(g.tutorId);
+          if (!tutor) return '';
+          return '<li><strong>' + esc(labels[tutor.id]) + '</strong> ' +
+            esc(U.daysLabel(g.days)) + ' ' +
+            esc(U.formatRange(g.startSlot, g.endSlot)) +
+            ' (' + esc(g.room || 'room TBA') + ')</li>';
+        }).join('');
+      if (!items) return '';
+      return '<div class="pv-offroom__run"><h2>' + esc(kind.plural) + '</h2>' +
+        '<ul>' + items + '</ul></div>';
     }).join('');
 
-    return '<section class="pv-offroom"><h2>Away from the center</h2>' +
-      '<ul>' + items + '</ul></section>';
+    return '<section class="pv-offroom">' + runs + '</section>';
   }
 
   function buildListing(state, labels) {

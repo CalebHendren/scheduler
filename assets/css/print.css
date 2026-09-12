@@ -103,15 +103,16 @@ html, body {
 .pv-table .pv-time { border-right: 2.5pt solid #10305F; }
 .pv-day-alt.pv-empty { background: #F2F6FB; }
 
-/* ---- away from the center ----------------------------------------------
-   A footnote band, not a second table: the entries run inline so the whole
-   thing costs one or two lines of the page-one budget. */
+/* ---- floating embedded tutors & open labs -------------------------------
+   A footnote band, not a second table: each kind is one run of inline
+   entries, so the whole thing costs a line or two of the page-one budget. */
 
 .pv-offroom {
   margin-top: 4px; padding: 3px 7px;
   border: 1px solid #10305F; border-left: 4px solid #0072B2;
   page-break-inside: avoid;
 }
+.pv-offroom__run + .pv-offroom__run { margin-top: 2px; }
 .pv-offroom h2 {
   display: inline; font-family: Georgia, "Times New Roman", serif;
   font-size: 8.5pt; color: #002855; margin-right: .35em;

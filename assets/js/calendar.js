@@ -311,11 +311,12 @@
     return node;
   }
 
-  /* ---- away from the center ----------------------------------------------
-   * Embedded classes and open labs, listed beside the calendar rather than
-   * drawn in it. They are still the tutor's hours, so each one carries the
-   * same lock and remove controls a block does, and the same dialog behind
-   * Edit -- which is also the only way to change where a shift is held.
+  /* ---- floating embedded tutors & open labs -------------------------------
+   * Held somewhere other than the room the calendar is about, so they are
+   * listed beside it under their own headings rather than drawn in it. They
+   * are still the tutor's hours, so each one carries the same lock and remove
+   * controls a block does, and the same dialog behind Edit -- which is also
+   * the only way to change where a shift is held.
    */
   function renderAside(container, state, handlers) {
     var dark = TS.theme.isDark();
@@ -326,24 +327,37 @@
 
     container.innerHTML = '';
 
-    if (!shifts.length) {
-      var empty = doc.createElement('p');
-      empty.className = 'offroom__empty';
-      empty.textContent = 'Nothing here yet. Add a shift, or press ✎ on one in the calendar, ' +
-        'and mark it as a floating embedded tutor or an open lab.';
-      container.appendChild(empty);
-      return;
-    }
-
     U.SHIFT_KINDS.forEach(function (kind) {
       if (kind.key === 'main') return;
       var group = shifts.filter(function (a) { return a.kind === kind.key; });
-      if (!group.length) return;
 
-      var heading = doc.createElement('h4');
+      // Neither kind staffs the center, so neither one should need a shift
+      // there first: each heading adds straight into itself.
+      var head = doc.createElement('div');
+      head.className = 'offroom__head';
+
+      var heading = doc.createElement('h3');
       heading.className = 'offroom__kind';
       heading.textContent = kind.plural;
-      container.appendChild(heading);
+      head.appendChild(heading);
+
+      var add = doc.createElement('button');
+      add.type = 'button';
+      add.className = 'btn btn--small';
+      add.textContent = 'Add';
+      add.setAttribute('aria-label', 'Add a ' + kind.label.toLowerCase());
+      add.addEventListener('click', function () { handlers.onAdd(kind.key); });
+      head.appendChild(add);
+
+      container.appendChild(head);
+
+      if (!group.length) {
+        var empty = doc.createElement('p');
+        empty.className = 'offroom__empty';
+        empty.textContent = 'None yet.';
+        container.appendChild(empty);
+        return;
+      }
 
       var list = doc.createElement('ul');
       list.className = 'offroom__list';

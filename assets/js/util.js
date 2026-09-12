@@ -7,7 +7,7 @@
    * commit and attaches the single-file build. Semantic versioning -- a new
    * feature is a minor bump, a fix is a patch.
    */
-  var VERSION = '1.0.0';
+  var VERSION = '1.1.0';
 
   var DAY_START_MIN = 7 * 60;      // 7:00 AM
   var SLOT_MINUTES = 30;
@@ -84,8 +84,8 @@
   var SHIFT_KINDS = [
     { key: 'main', label: 'At the tutoring center', short: '', plural: '' },
     { key: 'embedded', label: 'Floating embedded tutor', short: 'Embedded',
-      plural: 'Floating embedded tutors' },
-    { key: 'lab', label: 'Open lab', short: 'Open lab', plural: 'Open labs' }
+      plural: 'Floating Embedded Tutors' },
+    { key: 'lab', label: 'Open lab', short: 'Open lab', plural: 'Open Labs' }
   ];
 
   function shiftKind(key) {
