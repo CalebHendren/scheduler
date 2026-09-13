@@ -271,13 +271,23 @@ Two buttons, for two different needs:
 
 Page 3 is the same week read the other way round. The schedule is written tutor by tutor, but
 the question a student turns up with is *when can I get help with Micro?* — so page 3 gives
-each class its own color and its own lane, and shows the stretches it is covered for, with the
-tutors who may be in written inside.
+each class a lane of its own and shows the stretches it is covered for, with the tutors who may
+be in written inside.
+
+It is otherwise page 1 exactly: the same header, the same notes, the same band of shifts held
+elsewhere, the same QR block. Only the grid changes, and the legend that decodes it.
 
 A tutor signed up for three classes covers all three the moment they sit down, so one 9–12
-shift by that tutor is three blocks at 9–12, one per class. That is the point of the page, not
+shift by that tutor is three blocks at 9–12, one per lane. That is the point of the page, not
 double counting: the legend's weekly hours are hours of cover per class, and they can add up to
 more than the center is open.
+
+Bio is green and Micro is pink. **Anatomy & Physiology I and II share one lane** — anyone
+signed up for II is signed up for I as well, so two lanes would be two columns saying the same
+thing. The block says which of the pair is actually covered at that moment: `AP1&2` when both
+are, `AP1` when only the first is, and the run breaks where that changes. If a tutor is signed
+up for II and not I, which the app allows even though the center does not expect it, the block
+says `AP2` rather than pretending otherwise.
 
 Only hours at the center count. An embedded tutor sitting in a class across campus is their
 time but not the center's cover, and is left out here exactly as it is left out of the grid.
@@ -375,8 +385,11 @@ its gray, which a deuteranope cannot separate at all — to ΔE 10.2.
 Auto-optimize re-picks every color. Fitting a single tutor re-picks only theirs, so the rest of
 the schedule stays where it was.
 
-Classes have their own scheme on the coverage page, taken from the far end of the same fifteen
-so that page does not read as a recolored copy of the one before it.
+Classes are named colors rather than palette slots — Bio green, Micro pink, the A&P lane
+indigo — because a handout is easier to hand over when it matches what people already say. A
+class a coordinator adds falls back to the far end of the same fifteen. The three are chosen to
+stay apart for a colorblind reader too: the closest pair of them is ΔE 14.6 under the worst of
+normal, protan and deutan vision.
 
 ## Development
 
@@ -407,8 +420,9 @@ every color of every palette size, that a generated palette keeps its closest pa
 colorblind reader too and that the assignment does not waste that pair on two tutors sitting
 side by side, CSV round-tripping and parsing, the class list and the bitmask it drives,
 embedded classes and open labs staying out of coverage while still spending a tutor's hours,
-touching shifts joining into one, class coverage turning a tutor's shift into one run per class
-they teach, the ten-tutor fixture with the budget both on and off, locked
+touching shifts joining into one, class coverage turning a tutor's shift into one run per lane
+they cover and breaking a run where the A&P label changes, the ten-tutor fixture with the budget
+both on and off, locked
 shifts surviving re-optimization, back-to-back shifts coming out as one block, fitting a single
 tutor without moving anyone else, and a randomized fuzz pass that asserts no generated schedule
 ever breaks a hard rule.

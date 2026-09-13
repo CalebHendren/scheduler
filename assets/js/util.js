@@ -162,12 +162,19 @@
     '#9C5821', '#8B5CF6', '#1DDDD4'
   ];
 
-  /* Classes are coloured from the far end of the same list. They are a
-   * different scheme on a different page, and starting where the tutors leave
-   * off is what stops the coverage page looking like a recoloured copy of the
-   * one before it.
+  /* Classes are named colours rather than palette slots: the centre calls Bio
+   * green and Micro pink, and a handout is easier to hand over when it matches
+   * what people already say. The A&P pair share a lane, so they share its
+   * colour. Anything a coordinator adds falls back to the far end of the tutor
+   * palette, which is far enough from these three to stay distinct.
    */
-  var SUBJECT_OFFSET = 8;
+  var SUBJECT_HUES = {
+    bio: '#009E73',
+    micro: '#B9228C',
+    ap1: '#2222B9',
+    ap2: '#2222B9'
+  };
+  var SUBJECT_FALLBACK_OFFSET = 11;
 
   // The day is modelled 7:00 AM to 8:30 PM because someone may be available
   // then, but a schedule is drawn over the hours actually in play, never
@@ -353,64 +360,145 @@
    *
    * A class is covered for as long as someone who teaches it is on shift at the
    * center, so one tutor signed up for three classes covers all three at once,
-   * and comes out as three separate runs -- which is the point. Shifts held
+   * and comes out under each of them -- which is the point. Shifts held
    * somewhere else are somebody's hours but not the center's cover, and are
    * left out here exactly as they are left out of the grid.
    */
-  function subjectRuns(assignments, tutors) {
+
+  /* Classes that are always taught together share a lane. Everyone signed up
+   * for A&P II is signed up for A&P I as well, so two lanes would be two
+   * columns saying the same thing; one lane, labelled for whichever of the
+   * pair is actually covered at that moment, says it once. A class list
+   * without these keys in it simply gets a lane each.
+   */
+  var PAIRED_SUBJECTS = ['ap1', 'ap2'];
+
+  // Lanes in the order the class list gives, the pair sitting where its first
+  // member would have been.
+  function coverageLanes() {
+    var lanes = [], pair = null;
+    SUBJECTS.forEach(function (subject, i) {
+      if (PAIRED_SUBJECTS.indexOf(subject.key) === -1) { lanes.push([i]); return; }
+      if (pair) pair.push(i);
+      else { pair = [i]; lanes.push(pair); }
+    });
+    return lanes;
+  }
+
+  function sharedPrefix(list) {
+    var prefix = list[0] || '';
+    for (var i = 1; i < list.length; i++) {
+      while (prefix && list[i].slice(0, prefix.length) !== prefix) {
+        prefix = prefix.slice(0, -1);
+      }
+    }
+    return prefix;
+  }
+
+  /* What a block calls itself: "AP1" when only one of a pair is covered,
+   * "AP1&2" when both are. Written by collapsing the shared start of the short
+   * codes rather than by naming the pair here, so a centre that renames its
+   * classes still gets a sensible label.
+   */
+  function coverageLabel(indices) {
+    var shorts = indices.map(function (i) { return SUBJECTS[i].short; });
+    if (shorts.length < 2) return shorts[0] || '';
+    var prefix = sharedPrefix(shorts);
+    var tails = shorts.map(function (code) { return code.slice(prefix.length); });
+    var numbered = prefix && tails.every(function (tail) { return /^[0-9]+$/.test(tail); });
+    return numbered ? prefix + tails.join('&') : shorts.join(' & ');
+  }
+
+  /* What the legend calls a lane: the pair's common name, or the class's own.
+   * The shared start of "Anatomy & Physiology I" and "... II" is "...ogy I",
+   * which cuts a word in half, so it is walked back to the last whole word
+   * before the numbering rather than used as it falls.
+   */
+  function laneLabel(lane) {
+    var labels = lane.map(function (i) { return SUBJECTS[i].label; });
+    if (labels.length < 2) return labels[0] || '';
+    var prefix = sharedPrefix(labels);
+    var midWord = labels.some(function (label) {
+      return label.length > prefix.length && !/\s/.test(label.charAt(prefix.length));
+    });
+    if (midWord) prefix = prefix.replace(/\S*$/, '');
+    prefix = prefix.replace(/[\s\-–—]+$/, '');
+    return prefix || labels.join(' / ');
+  }
+
+  /*
+   * Every stretch of the week each lane is covered for, split wherever the
+   * answer changes -- when cover starts or stops, and when which of a pair is
+   * covered changes, so the label on a block is true for the whole of it.
+   *
+   * Returns { lane, subjects, label, day, startSlot, endSlot, tutorIds }.
+   */
+  function coverageRuns(assignments, tutors) {
     var masks = {}, runs = [];
     (tutors || []).forEach(function (t) { masks[t.id] = subjectMask(t.subjects); });
 
     var shifts = mainShifts(assignments).filter(function (a) { return masks[a.tutorId]; });
+    var lanes = coverageLanes();
 
-    for (var subject = 0; subject < SUBJECTS.length; subject++) {
-      var bit = SUBJECTS[subject].bit;
-      var teaching = shifts.filter(function (a) { return masks[a.tutorId] & bit; });
-      if (!teaching.length) continue;
+    lanes.forEach(function (lane, laneIndex) {
+      var laneMask = 0;
+      lane.forEach(function (i) { laneMask |= SUBJECTS[i].bit; });
 
       for (var day = 0; day < DAYS; day++) {
-        var today = teaching.filter(function (a) { return a.day === day; });
+        var today = shifts.filter(function (a) {
+          return a.day === day && (masks[a.tutorId] & laneMask);
+        });
         if (!today.length) continue;
 
-        // Who is on for this class in each half hour; a run is a stretch with
-        // somebody in it, however many people come and go inside it.
-        var who = [];
-        for (var slot = 0; slot < SLOTS_PER_DAY; slot++) who.push(null);
+        // Which of the lane's classes are covered in each half hour, and who is
+        // in for them.
+        var cover = [];
+        for (var slot = 0; slot < SLOTS_PER_DAY; slot++) cover.push(null);
         today.forEach(function (a) {
           for (var slot = a.startSlot; slot < a.endSlot; slot++) {
-            if (!who[slot]) who[slot] = [];
-            if (who[slot].indexOf(a.tutorId) === -1) who[slot].push(a.tutorId);
+            if (!cover[slot]) cover[slot] = { mask: 0, ids: [] };
+            cover[slot].mask |= masks[a.tutorId] & laneMask;
+            if (cover[slot].ids.indexOf(a.tutorId) === -1) cover[slot].ids.push(a.tutorId);
           }
         });
 
         var open = null;
         for (var s = 0; s <= SLOTS_PER_DAY; s++) {
-          var covered = s < SLOTS_PER_DAY && who[s];
-          if (covered && !open) open = { start: s, tutorIds: [] };
-          if (covered) {
-            who[s].forEach(function (id) {
-              if (open.tutorIds.indexOf(id) === -1) open.tutorIds.push(id);
-            });
-          } else if (open) {
-            runs.push({
-              subject: subject, subjectKey: SUBJECTS[subject].key,
-              day: day, startSlot: open.start, endSlot: s, tutorIds: open.tutorIds
-            });
+          var here = s < SLOTS_PER_DAY ? cover[s] : null;
+          if (open && (!here || here.mask !== open.mask)) {
+            runs.push(closeRun(open, laneIndex, lane, day, s));
             open = null;
           }
+          if (!here) continue;
+          if (!open) open = { start: s, mask: here.mask, ids: [] };
+          here.ids.forEach(function (id) {
+            if (open.ids.indexOf(id) === -1) open.ids.push(id);
+          });
         }
       }
-    }
+    });
     return runs;
   }
 
-  // Half hours a week each class is covered for, indexed the same as SUBJECTS,
-  // which is what lets the coverage page say how much of each is on offer.
-  function subjectSlotTotals(runs) {
+  function closeRun(open, laneIndex, lane, day, endSlot) {
+    var subjects = lane.filter(function (i) { return open.mask & SUBJECTS[i].bit; });
+    return {
+      lane: laneIndex,
+      subjects: subjects,
+      label: coverageLabel(subjects),
+      day: day,
+      startSlot: open.start,
+      endSlot: endSlot,
+      tutorIds: open.ids
+    };
+  }
+
+  // Half hours a week each lane is covered for, indexed like coverageLanes().
+  function coverageLaneHours(runs) {
     var totals = [];
-    for (var i = 0; i < SUBJECTS.length; i++) totals.push(0);
+    for (var i = 0; i < coverageLanes().length; i++) totals.push(0);
     (runs || []).forEach(function (run) {
-      totals[run.subject] += run.endSlot - run.startSlot;
+      totals[run.lane] += run.endSlot - run.startSlot;
     });
     return totals;
   }
@@ -485,8 +573,15 @@
     return shadeBlock(PALETTE[colorIndex % PALETTE.length], dark);
   }
 
-  function subjectColors(subjectIndex, dark) {
-    return shadeBlock(PALETTE[(SUBJECT_OFFSET + subjectIndex) % PALETTE.length], dark);
+  function subjectHue(subjectIndex) {
+    var subject = SUBJECTS[subjectIndex];
+    var named = subject && SUBJECT_HUES[subject.key];
+    return named || PALETTE[(SUBJECT_FALLBACK_OFFSET + subjectIndex) % PALETTE.length];
+  }
+
+  // A lane wears the colour of the classes in it, which share one by sharing it.
+  function laneColors(lane, dark) {
+    return shadeBlock(subjectHue(lane && lane.length ? lane[0] : 0), dark);
   }
 
   // Past the end of the list a color has to come round again, and the repeat is
@@ -800,8 +895,11 @@
     roomLabel: roomLabel,
     daysLabel: daysLabel,
     groupOffRoom: groupOffRoom,
-    subjectRuns: subjectRuns,
-    subjectSlotTotals: subjectSlotTotals,
+    coverageLanes: coverageLanes,
+    coverageLabel: coverageLabel,
+    coverageRuns: coverageRuns,
+    coverageLaneHours: coverageLaneHours,
+    laneLabel: laneLabel,
     PALETTE: PALETTE,
     SURFACE_LIGHT: SURFACE_LIGHT,
     SURFACE_DARK: SURFACE_DARK,
@@ -827,7 +925,7 @@
     relativeLuminance: relativeLuminance,
     contrastRatio: contrastRatio,
     blockColors: blockColors,
-    subjectColors: subjectColors,
+    laneColors: laneColors,
     usesHatch: usesHatch,
     deltaE: deltaE,
     colorGap: colorGap,

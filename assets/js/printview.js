@@ -120,7 +120,7 @@
     var today = runs.filter(function (run) { return run.day === day; });
     var lanes = [];
     today.forEach(function (run) {
-      if (lanes.indexOf(run.subject) === -1) lanes.push(run.subject);
+      if (lanes.indexOf(run.lane) === -1) lanes.push(run.lane);
     });
     lanes.sort(function (a, b) { return a - b; });
 
@@ -130,7 +130,7 @@
       return row;
     });
     today.forEach(function (run) {
-      var lane = lanes.indexOf(run.subject);
+      var lane = lanes.indexOf(run.lane);
       for (var s = run.startSlot; s < run.endSlot; s++) grid[lane][s] = run;
     });
 
@@ -138,8 +138,8 @@
   }
 
   function subjectCell(run, labels, cls) {
-    var subject = U.SUBJECTS[run.subject];
-    var colors = U.subjectColors(run.subject, false);
+    var colors = U.laneColors(U.coverageLanes()[run.lane], false);
+    var spoken = run.subjects.map(function (i) { return U.SUBJECTS[i].label; });
     var who = run.tutorIds.map(function (id) {
       var tutor = TS.store.getTutor(id);
       return tutor ? labels[tutor.id] : '';
@@ -148,31 +148,25 @@
     return '<td class="' + cls + '" rowspan="' + (run.endSlot - run.startSlot) + '"' +
       ' style="background:' + colors.bg + ';border-left:4px solid ' + colors.bar +
       ';color:' + colors.ink + '">' +
-      '<span class="pv-block__name">' + esc(subject.short) + '</span>' +
+      '<span class="pv-block__name">' + esc(run.label) + '</span>' +
       '<span class="pv-block__time">' + esc(U.formatRange(run.startSlot, run.endSlot)) + '</span>' +
       '<span class="pv-block__who">' + esc(who.join(', ') || 'unstaffed') + '</span>' +
-      '<span class="visually-hidden">' + esc(subject.label) +
+      // "AP1&2" is a label, not a sentence: a screen reader gets the classes
+      // spelled out instead.
+      '<span class="visually-hidden">' + esc(U.listSentence(spoken)) +
       (who.length ? ', with ' + esc(U.listSentence(who)) : '') + '</span>' +
       '</td>';
   }
 
   function buildSubjectTable(state, labels) {
-    var runs = U.subjectRuns(state.assignments, state.tutors);
-    if (!runs.length) {
-      return '<section class="pv-subjects"><h2>Coverage by class</h2>' +
-        '<p>No class is covered yet.</p></section>';
-    }
+    var runs = U.coverageRuns(state.assignments, state.tutors);
+    if (!runs.length) return '<p>No class is covered yet.</p>';
 
     var win = U.scheduleWindow(U.mainShifts(state.assignments));
     var days = [];
     for (var d = 0; d < U.DAYS; d++) days.push(subjectLaneGrid(runs, d));
 
-    var html = '<section class="pv-subjects">' +
-      '<h2>Coverage by class</h2>' +
-      '<p class="pv-subjects__lede">When each class is covered, and who may be in. ' +
-      'One tutor signed up for several classes covers all of them at once, so the ' +
-      'same hour appears under each.</p>' +
-      '<table class="pv-table"><caption class="visually-hidden">' +
+    var html = '<table class="pv-table"><caption class="visually-hidden">' +
       'Weekly class coverage, Monday through Friday, ' +
       esc(U.formatMinutes(U.slotStartMinutes(win.start))) + ' to ' +
       esc(U.formatMinutes(U.slotStartMinutes(win.end))) + '</caption><thead><tr>' +
@@ -207,20 +201,20 @@
       html += '</tr>';
     }
 
-    return html + '</tbody></table>' + buildSubjectLegend(runs) + '</section>';
+    return html + '</tbody></table>';
   }
 
   function buildSubjectLegend(runs) {
-    var totals = U.subjectSlotTotals(runs);
-    var items = U.SUBJECTS.map(function (subject, i) {
-      var colors = U.subjectColors(i, false);
+    if (!runs.length) return '';
+    var totals = U.coverageLaneHours(runs);
+    var items = U.coverageLanes().map(function (lane, i) {
+      var colors = U.laneColors(lane, false);
       return '<li><span class="pv-swatch" style="background:' + colors.bg +
         ';border-left:5px solid ' + colors.bar + '"></span>' +
-        esc(subject.label) + ' <span class="pv-legend__subjects">' +
+        esc(U.laneLabel(lane)) + ' <span class="pv-legend__subjects">' +
         esc(U.hoursLabel(totals[i])) + ' a week</span></li>';
     }).join('');
-    return '<section class="pv-legend pv-legend--subjects"><h2>Classes</h2><ul>' +
-      items + '</ul></section>';
+    return '<section class="pv-legend"><h2>Classes</h2><ul>' + items + '</ul></section>';
   }
 
   function buildOffRoom(state, labels) {
@@ -293,46 +287,74 @@
     return '<section class="pv-legend"><h2>Tutors</h2><ul>' + items + '</ul></section>';
   }
 
-  function render(container, state) {
-    var labels = U.displayNames(state.tutors);
+  /* ---- page furniture ----
+   * The coverage page is page one over again, differing only in which grid it
+   * carries and which legend decodes it, so everything either page would
+   * otherwise repeat is built here and handed to both.
+   */
+  function buildHead(state) {
+    var s = state.settings;
+    return '<header class="pv-head">' +
+      '<div class="pv-head__main">' +
+        '<p class="pv-college">Chattanooga State Community College</p>' +
+        '<h1>' + esc(s.title) + '</h1>' +
+        (s.term ? '<p class="pv-term">' + esc(s.term) + '</p>' : '') +
+        (s.effective ? '<p class="pv-subtitle">' + esc(s.effective) + '</p>' : '') +
+        '<p class="pv-where">' + esc(s.location) + '</p>' +
+      '</div>' +
+      (s.contactName || s.contactEmail
+        ? '<div class="pv-head__contact"><p>' +
+            (s.contactName ? '<strong>' + esc(s.contactName) + '</strong>' : '') +
+            (s.contactName && s.contactEmail ? '<br>' : '') +
+            esc(s.contactEmail) + '</p></div>'
+        : '') +
+      '</header>';
+  }
+
+  function buildNotes(state) {
+    var notes = state.settings.notes;
+    if (!notes) return '';
+    return '<section class="pv-notes"><h2>Important notes</h2><p>' +
+      esc(notes) + '</p></section>';
+  }
+
+  function buildFoot(state, legendHtml) {
     var s = state.settings;
     var qrSvg = TS.qr.toSvg(s.qrUrl, { label: 'QR code linking to ' + s.qrUrl });
+    return '<div class="pv-foot">' +
+      '<div class="pv-qr">' + qrSvg + '</div>' +
+      '<div class="pv-qr__text">' +
+        '<p><strong>Need help outside these hours?</strong></p>' +
+        '<p>' + esc(s.qrCaption) + '</p>' +
+        '<p class="pv-qr__url">' + esc(s.qrUrl) + '</p>' +
+      '</div>' +
+      legendHtml +
+      '</div>';
+  }
+
+  /* A whole handout page: the furniture wrapped round one grid and the legend
+   * that decodes that grid's colours. */
+  function buildHandout(state, labels, tableHtml, legendHtml) {
+    return buildHead(state) +
+      tableHtml +
+      buildOffRoom(state, labels) +
+      buildNotes(state) +
+      buildFoot(state, legendHtml);
+  }
+
+  function render(container, state) {
+    var labels = U.displayNames(state.tutors);
+    var runs = U.coverageRuns(state.assignments, state.tutors);
 
     container.innerHTML =
-      '<header class="pv-head">' +
-        '<div class="pv-head__main">' +
-          '<p class="pv-college">Chattanooga State Community College</p>' +
-          '<h1>' + esc(s.title) + '</h1>' +
-          (s.term ? '<p class="pv-term">' + esc(s.term) + '</p>' : '') +
-          (s.effective ? '<p class="pv-subtitle">' + esc(s.effective) + '</p>' : '') +
-          '<p class="pv-where">' + esc(s.location) + '</p>' +
-        '</div>' +
-        (s.contactName || s.contactEmail
-          ? '<div class="pv-head__contact"><p>' +
-              (s.contactName ? '<strong>' + esc(s.contactName) + '</strong>' : '') +
-              (s.contactName && s.contactEmail ? '<br>' : '') +
-              esc(s.contactEmail) + '</p></div>'
-          : '') +
-      '</header>' +
-      buildTable(state, labels) +
-      buildOffRoom(state, labels) +
-      (s.notes
-        ? '<section class="pv-notes"><h2>Important notes</h2><p>' + esc(s.notes) + '</p></section>'
-        : '') +
-      '<div class="pv-foot">' +
-        '<div class="pv-qr">' + qrSvg + '</div>' +
-        '<div class="pv-qr__text">' +
-          '<p><strong>Need help outside these hours?</strong></p>' +
-          '<p>' + esc(s.qrCaption) + '</p>' +
-          '<p class="pv-qr__url">' + esc(s.qrUrl) + '</p>' +
-        '</div>' +
-        buildLegend(state, labels) +
-      '</div>' +
+      buildHandout(state, labels, buildTable(state, labels), buildLegend(state, labels)) +
       buildListing(state, labels) +
       // The coverage page, and the listing again behind it: printed double
       // sided, each sheet then carries a calendar on one face and the shift
       // listing on the other, whichever sheet someone picks up.
-      buildSubjectTable(state, labels) +
+      '<section class="pv-coverage">' +
+        buildHandout(state, labels, buildSubjectTable(state, labels), buildSubjectLegend(runs)) +
+      '</section>' +
       buildListing(state, labels);
   }
 

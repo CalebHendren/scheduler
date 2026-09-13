@@ -180,11 +180,22 @@
     r.ok(worstTint >= 8, 'every pair of palette tints is distinguishable',
       'slots ' + tintPair + ' at max channel delta ' + worstTint);
 
-    // Classes are coloured from the same list, so the coverage page inherits
-    // that separation rather than needing a scheme of its own -- but it must
-    // not open on the same color the tutor page does.
-    r.ok(U.subjectColors(0, false).hue !== U.blockColors(0, false).hue,
-      'the class scheme does not start where the tutor scheme starts');
+    /* The classes sit side by side in every column of the coverage page, so
+     * they are the one set of colors with no solver to keep them apart -- they
+     * have to be far enough apart as chosen, for every reader.
+     */
+    var laneHues = U.coverageLanes().map(function (lane) {
+      return U.laneColors(lane, false).hue;
+    });
+    var worstLane = 999, lanePair = 'none';
+    for (var la = 0; la < laneHues.length; la++) {
+      for (var lb = la + 1; lb < laneHues.length; lb++) {
+        var laneGap = U.blockGap(laneHues[la], laneHues[lb]);
+        if (laneGap < worstLane) { worstLane = laneGap; lanePair = laneHues[la] + '/' + laneHues[lb]; }
+      }
+    }
+    r.ok(worstLane >= 10, 'the class colors stay apart for every reader',
+      lanePair + ' at ' + worstLane.toFixed(1));
 
     /* A red and a green are far apart to most readers and the same color to a
      * deuteranope. The gap the solver works from has to shrink for a pair like
@@ -319,14 +330,14 @@
 
   /* ---- 2c. coverage by class --------------------------------------------- */
 
-  function testSubjectRuns(r) {
-    // Three tutors, deliberately overlapping in what they teach, so a run can
-    // be checked for who it names as well as when it runs.
+  function testCoverageRuns(r) {
     var tutors = [
       TS.store.normalizeTutor({ id: 'all', firstName: 'Ada',
         subjects: { bio: true, micro: true, ap1: true } }),
       TS.store.normalizeTutor({ id: 'bio', firstName: 'Ben', subjects: { bio: true } }),
-      TS.store.normalizeTutor({ id: 'none', firstName: 'Cy', subjects: {} })
+      TS.store.normalizeTutor({ id: 'both', firstName: 'Cleo',
+        subjects: { ap1: true, ap2: true } }),
+      TS.store.normalizeTutor({ id: 'none', firstName: 'Dov', subjects: {} })
     ];
     var shift = function (id, day, a, b, kind, room) {
       return TS.store.normalizeAssignment({
@@ -334,73 +345,96 @@
         kind: kind || 'main', room: room || ''
       });
     };
+    var laneOf = function (runs, label) {
+      return runs.filter(function (run) { return run.label === label; });
+    };
 
-    // The case from the bug report: one tutor signed up for three classes,
-    // working one shift, has to come out as three separate runs over the same
-    // hours -- one per class, not one block wearing three labels.
-    var runs = U.subjectRuns([shift('all', 0, 4, 10)], tutors);
-    r.eq(runs.length, 3, 'one tutor teaching three classes covers three of them at once');
-    var keys = runs.map(function (run) { return run.subjectKey; }).sort().join(',');
-    r.eq(keys, 'ap1,bio,micro', 'and the three are the ones they teach');
+    // A&P I and II are one lane, because everyone who can take II can take I:
+    // two lanes would be two columns saying the same thing.
+    var lanes = U.coverageLanes();
+    r.eq(lanes.length, U.SUBJECTS.length - 1, 'the A&P pair share a lane');
+    var paired = lanes.filter(function (lane) { return lane.length > 1; });
+    r.eq(paired.length, 1, 'and they are the only lane with two classes in it');
+    r.eq(U.laneLabel(paired[0]), 'Anatomy & Physiology', 'the lane takes their shared name');
+    r.eq(U.coverageLabel(paired[0]), 'AP1&2', 'and a block covering both says so');
+    r.eq(U.coverageLabel([paired[0][0]]), 'AP1', 'one covering only the first says only that');
+
+    // The case from the bug report: a tutor signed up for three classes,
+    // working one shift, covers all three at once.
+    var runs = U.coverageRuns([shift('all', 0, 4, 10)], tutors);
+    r.eq(runs.length, 3, 'one tutor teaching three classes covers three lanes at once');
+    var labels = runs.map(function (run) { return run.label; }).sort().join(',');
+    r.eq(labels, 'AP1,BIO,MICRO', 'labelled for what they actually cover');
     var sameHours = runs.every(function (run) {
       return run.day === 0 && run.startSlot === 4 && run.endSlot === 10;
     });
     r.ok(sameHours, 'all three runs cover exactly the hours they worked');
-    r.eq(runs[0].tutorIds.join(','), 'all', 'and each names them');
 
-    // Two tutors back to back on the same class are one stretch of cover, and
-    // the run names both, because either of them may be the one sitting there.
-    var joined = U.subjectRuns([shift('all', 1, 4, 8), shift('bio', 1, 8, 12)], tutors);
-    var bioRun = joined.filter(function (run) {
-      return run.subjectKey === 'bio' && run.day === 1;
-    });
+    // One tutor covering both halves of the pair is one block, not two.
+    var bothRuns = U.coverageRuns([shift('both', 0, 4, 10)], tutors);
+    r.eq(bothRuns.length, 1, 'a tutor teaching both halves of the pair fills one lane');
+    r.eq(bothRuns[0].label, 'AP1&2', 'and the block names both');
+
+    // When the second half stops being covered, the label has to change with
+    // it, so the run breaks where the answer does.
+    var handover = U.coverageRuns(
+      [shift('both', 1, 4, 8), shift('all', 1, 8, 12)], tutors);
+    r.eq(laneOf(handover, 'AP1&2').length, 1, 'both halves covered while Cleo is in');
+    r.eq(laneOf(handover, 'AP1&2')[0].endSlot, 8, 'ending when she leaves');
+    r.eq(laneOf(handover, 'AP1').length, 1, 'and only the first half after that');
+    r.eq(laneOf(handover, 'AP1')[0].startSlot, 8, 'picking up where the other stopped');
+
+    // Two tutors back to back on one class are a single stretch of cover, and
+    // the run names both, because either may be the one sitting there.
+    var joined = U.coverageRuns([shift('all', 2, 4, 8), shift('bio', 2, 8, 12)], tutors);
+    var bioRun = laneOf(joined, 'BIO');
     r.eq(bioRun.length, 1, 'back-to-back shifts on one class are a single run');
     r.eq(bioRun[0].startSlot + '-' + bioRun[0].endSlot, '4-12', 'running the length of both');
     r.eq(bioRun[0].tutorIds.slice().sort().join(','), 'all,bio', 'naming everyone in it');
-    var microRun = joined.filter(function (run) { return run.subjectKey === 'micro'; });
-    r.eq(microRun.length, 1, 'the class only one of them teaches stops when they do');
-    r.eq(microRun[0].endSlot, 8, 'at the end of that tutor’s shift');
+    r.eq(laneOf(joined, 'MICRO')[0].endSlot, 8, 'a class only one of them teaches stops with them');
 
     // An hour with nobody in splits the cover rather than papering over it.
-    var split = U.subjectRuns([shift('bio', 2, 4, 8), shift('bio', 2, 10, 14)], tutors);
+    var split = U.coverageRuns([shift('bio', 3, 4, 8), shift('bio', 3, 10, 14)], tutors);
     r.eq(split.length, 2, 'a gap in cover breaks the run in two');
     r.eq(split[0].endSlot + '/' + split[1].startSlot, '8/10', 'on either side of the gap');
 
-    // Hours held somewhere else are that tutor's time but not the centre's
+    // Hours held somewhere else are that tutor's time but not the center's
     // cover, exactly as they are left out of the grid.
-    var elsewhere = U.subjectRuns([shift('all', 3, 4, 10, 'lab', 'OMN 286')], tutors);
-    r.eq(elsewhere.length, 0, 'an open lab is not cover at the center');
-
-    // A tutor with nothing checked cannot cover anything.
-    r.eq(U.subjectRuns([shift('none', 4, 4, 10)], tutors).length, 0,
+    r.eq(U.coverageRuns([shift('all', 4, 4, 10, 'lab', 'OMN 286')], tutors).length, 0,
+      'an open lab is not cover at the center');
+    r.eq(U.coverageRuns([shift('none', 4, 4, 10)], tutors).length, 0,
       'a tutor with no classes covers none');
 
-    var totals = U.subjectSlotTotals(U.subjectRuns([shift('all', 0, 4, 10)], tutors));
-    r.eq(totals.length, U.SUBJECTS.length, 'the totals line up with the class list');
-    r.eq(totals[0], 6, 'and count half hours of cover');
+    var hours = U.coverageLaneHours(U.coverageRuns([shift('all', 0, 4, 10)], tutors));
+    r.eq(hours.length, lanes.length, 'the totals line up with the lanes');
+    r.eq(hours[0], 6, 'and count half hours of cover');
+
+    // The classes are named colors, and the pair shares one by sharing a lane.
+    r.eq(U.laneColors(lanes[0], false).hue, '#009E73', 'Bio is green');
+    r.eq(U.laneColors(lanes[1], false).hue, '#B9228C', 'Micro is pink');
+    r.eq(U.laneColors(paired[0], false).hue, '#2222B9', 'and the A&P lane is indigo');
 
     // The real fixture, as a sanity check that it holds together at size.
     var state = fixtureState();
     state.assignments = TS.optimizer.optimize(state, { iterations: 4000 });
-    var real = U.subjectRuns(state.assignments, state.tutors);
+    var real = U.coverageRuns(state.assignments, state.tutors);
     r.ok(real.length > 0, 'the fixture schedule covers something', real.length + ' runs');
     var sane = real.every(function (run) {
       return run.endSlot > run.startSlot && run.tutorIds.length > 0 &&
-        run.subject >= 0 && run.subject < U.SUBJECTS.length;
+        run.label && run.lane >= 0 && run.lane < lanes.length;
     });
-    r.ok(sane, 'every run has an end after its start and somebody in it');
+    r.ok(sane, 'every run has an end after its start, a label and somebody in it');
 
-    // Cover can only ever be as long as somebody is actually on shift for it.
-    var worked = 0;
-    U.mainShifts(state.assignments).forEach(function (a) {
-      var tutor = TS.store.getTutor(a.tutorId) ||
-        state.tutors.filter(function (t) { return t.id === a.tutorId; })[0];
-      if (tutor && U.subjectMask(tutor.subjects)) worked += a.endSlot - a.startSlot;
+    // Two runs in the same lane on the same day must never overlap, or the
+    // grid would draw one block on top of another.
+    var clash = false;
+    real.forEach(function (a) {
+      real.forEach(function (b) {
+        if (a === b || a.lane !== b.lane || a.day !== b.day) return;
+        if (a.startSlot < b.endSlot && b.startSlot < a.endSlot) clash = true;
+      });
     });
-    var covered = U.subjectSlotTotals(real).reduce(function (sum, v) { return sum + v; }, 0);
-    r.ok(covered <= worked * U.SUBJECTS.length,
-      'no class is covered for longer than anyone was there to cover it',
-      covered + ' covered half hours against ' + worked + ' worked');
+    r.ok(!clash, 'no two runs in one lane ever overlap');
   }
 
   /* ---- 3. CSV ------------------------------------------------------------ */
@@ -1021,7 +1055,7 @@
     testUndoHistory(r);
     testContrast(r);
     testColorAssignment(r);
-    testSubjectRuns(r);
+    testCoverageRuns(r);
     testCsv(r);
     testSubjectClasses(r);
     testShiftKinds(r);
