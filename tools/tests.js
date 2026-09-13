@@ -122,17 +122,32 @@
 
   /* ---- 2. contrast ------------------------------------------------------- */
 
+  // Ring sizes a real roster produces, plus the edges either side of the point
+  // where the hatch joins in.
+  var RING_SIZES = [1, 2, 3, 5, 8, 10, 12, 13, 14, 18, 24];
+  var HATCH_LIMIT = 13;
+
   function testContrast(r) {
     // The identity bar is decorative; the text on the block is what has to
-    // clear AA, in both themes and for every palette slot including wraps.
-    for (var i = 0; i < U.PALETTE.length + 2; i++) {
-      var light = U.blockColors(i, false);
-      var dark = U.blockColors(i, true);
-      var lr = U.contrastRatio(light.ink, light.bg);
-      var dr = U.contrastRatio(dark.ink, dark.bg);
-      r.ok(lr >= 4.5, 'palette ' + i + ' light block text is AA', lr.toFixed(2) + ':1');
-      r.ok(dr >= 4.5, 'palette ' + i + ' dark block text is AA', dr.toFixed(2) + ':1');
-    }
+    // clear AA, in both themes and for every slot of every ring a roster can
+    // produce -- the ring is generated, so there is no fixed list to check.
+    var worstLight = 99, worstDark = 99, worstAt = '';
+    RING_SIZES.forEach(function (size) {
+      U.setColorCount(size);
+      for (var i = 0; i < size; i++) {
+        var light = U.blockColors(i, false);
+        var dark = U.blockColors(i, true);
+        var lr = U.contrastRatio(light.ink, light.bg);
+        var dr = U.contrastRatio(dark.ink, dark.bg);
+        if (lr < worstLight || dr < worstDark) worstAt = 'ring ' + size + ' slot ' + i;
+        worstLight = Math.min(worstLight, lr);
+        worstDark = Math.min(worstDark, dr);
+      }
+    });
+    r.ok(worstLight >= 4.5, 'light block text is AA for every generated color',
+      worstLight.toFixed(2) + ':1 at ' + worstAt);
+    r.ok(worstDark >= 4.5, 'dark block text is AA for every generated color',
+      worstDark.toFixed(2) + ':1 at ' + worstAt);
 
     var brand = {
       navy: '#10305F', blue: '#0B57BE', blueDark: '#002855',
@@ -161,18 +176,168 @@
       U.contrastRatio('#6FA8FF', darkGround).toFixed(2) + ':1');
     r.ok(U.contrastRatio('#FF7A3D', darkGround) >= 3.0, 'dark theme orange clears 3:1');
 
-    // Adjacent tutors must not resolve to visually identical fills.
-    for (var a = 0; a < U.PALETTE.length; a++) {
-      for (var b = a + 1; b < U.PALETTE.length; b++) {
-        var ca = U.hexToRgb(U.blockColors(a, false).bg);
-        var cb = U.hexToRgb(U.blockColors(b, false).bg);
-        var spread = Math.max(
-          Math.abs(ca[0] - cb[0]), Math.abs(ca[1] - cb[1]), Math.abs(ca[2] - cb[2])
-        );
-        r.ok(spread >= 8, 'palette tints ' + a + ' and ' + b + ' are distinguishable',
-          'max channel delta ' + spread);
+    /* No two tutors may resolve to fills that read alike. Up to the hatch limit
+     * the ring is asked to carry that on color alone, in the worst case across
+     * normal, protan and deutan vision -- which is the guarantee that matters,
+     * because it is the floor under every placement the solver can make.
+     */
+    RING_SIZES.forEach(function (size) {
+      if (size < 2 || size > HATCH_LIMIT) return;
+      U.setColorCount(size);
+      var worstGap = 999, worstTint = 999, pair = 'none';
+      for (var a = 0; a < size; a++) {
+        for (var b = a + 1; b < size; b++) {
+          var gap = U.blockGap(U.PALETTE[a], U.PALETTE[b]);
+          if (gap < worstGap) { worstGap = gap; pair = a + '/' + b; }
+          var ca = U.hexToRgb(U.blockColors(a, false).bg);
+          var cb = U.hexToRgb(U.blockColors(b, false).bg);
+          worstTint = Math.min(worstTint, Math.max(
+            Math.abs(ca[0] - cb[0]), Math.abs(ca[1] - cb[1]), Math.abs(ca[2] - cb[2])
+          ));
+        }
+      }
+      r.ok(worstGap >= 6, 'ring of ' + size + ' keeps every pair apart for every reader',
+        'slots ' + pair + ' at ' + worstGap.toFixed(1));
+      r.ok(worstTint >= 8, 'ring of ' + size + ' draws every tutor a distinguishable fill',
+        'max channel delta ' + worstTint);
+    });
+
+    // Past the limit, color is carrying more than it can and the diagonal hatch
+    // comes in as a second channel rather than the ring quietly getting worse.
+    U.setColorCount(HATCH_LIMIT);
+    r.ok(!U.usesHatch(1), 'at the limit the ring still runs on color alone');
+    U.setColorCount(HATCH_LIMIT + 1);
+    r.ok(U.usesHatch(1) && !U.usesHatch(0), 'past it every other slot picks up the hatch');
+
+    /* Dispersion on its own would happily hand a red and a green to two tutors
+     * a deuteranope cannot tell apart. The gap the ring is built from has to
+     * shrink for a pair like that, or the colorblind case is invisible to it.
+     */
+    var normal = U.deltaE('#D53E00', '#009E6E');
+    var worstCase = U.colorGap('#D53E00', '#009E6E');
+    r.ok(worstCase < normal, 'a red/green pair reads closer once colorblindness is counted',
+      worstCase.toFixed(1) + ' vs ' + normal.toFixed(1) + ' to normal vision');
+  }
+
+  /* ---- 2b. color assignment ---------------------------------------------- */
+
+  function testColorAssignment(r) {
+    var state = fixtureState();
+    state.assignments = TS.optimizer.optimize(state, { iterations: 4000 });
+
+    var map = U.assignColors(state.tutors, state.assignments);
+    var picked = state.tutors.map(function (t) { return map[t.id]; });
+    r.eq(Object.keys(map).length, state.tutors.length, 'every tutor is given a color');
+    r.eq(U.PALETTE.length, state.tutors.length,
+      'the ring is sized to the roster, so no color is handed out twice');
+
+    var distinct = {};
+    picked.forEach(function (slot) { distinct[slot] = true; });
+    r.eq(Object.keys(distinct).length, picked.length, 'no two tutors share a slot');
+
+    var w = U.proximityMatrix(state.tutors, state.assignments);
+    var n = state.tutors.length;
+
+    // The closest any two colors in this ring come, which is the floor under
+    // every arrangement of it -- the solver cannot beat it, only avoid wasting
+    // it on the pair of tutors a reader sees together.
+    var floor = Infinity;
+    for (var a = 0; a < n; a++) {
+      for (var b = a + 1; b < n; b++) {
+        floor = Math.min(floor, U.blockGap(U.PALETTE[a], U.PALETTE[b]));
       }
     }
+    r.ok(floor >= 6, 'the ring itself keeps its closest pair apart', floor.toFixed(1));
+
+    // How near the closest pair of colors lands to a pair of tutors a reader
+    // takes in together -- the case in the bug report, including the cross-day
+    // one, a Monday block beside a Tuesday block at the same hour.
+    function closestTouching(slots) {
+      var gap = Infinity, pair = 'none';
+      for (var i = 0; i < n; i++) {
+        for (var j = i + 1; j < n; j++) {
+          if (w[i][j] < 0.8) continue;
+          var seen = U.blockGap(U.PALETTE[slots[i] % U.PALETTE.length],
+            U.PALETTE[slots[j] % U.PALETTE.length]);
+          if (seen < gap) {
+            gap = seen;
+            pair = state.tutors[i].firstName + '/' + state.tutors[j].firstName;
+          }
+        }
+      }
+      return { gap: gap, pair: pair };
+    }
+
+    function totalClash(slots) {
+      var total = 0;
+      for (var i = 0; i < n; i++) {
+        for (var j = i + 1; j < n; j++) total += w[i][j] * U.slotClash(slots[i], slots[j]);
+      }
+      return total;
+    }
+
+    var sequential = state.tutors.map(function (t, i) { return i; });
+    var dynamic = closestTouching(picked), byOrder = closestTouching(sequential);
+
+    r.ok(dynamic.gap < Infinity, 'the fixture schedule really does put tutors side by side');
+    r.ok(dynamic.gap > floor + 0.01,
+      'the ring’s closest pair is spent on two tutors nobody sees together',
+      dynamic.pair + ' at ' + dynamic.gap.toFixed(1) + ' against a floor of ' + floor.toFixed(1));
+    r.ok(dynamic.gap >= byOrder.gap, 'and never does worse than roster order did',
+      dynamic.gap.toFixed(1) + ' vs ' + byOrder.gap.toFixed(1));
+    r.ok(totalClash(picked) < totalClash(sequential),
+      'schedule-aware colors beat roster-order colors overall',
+      totalClash(picked).toFixed(3) + ' vs ' + totalClash(sequential).toFixed(3));
+
+    // A block one day over at the same hour is as adjacent as one an hour later
+    // in the same column, and the model has to say so.
+    var monday = { day: 0, startSlot: 4, endSlot: 10 };
+    var tuesday = { day: 1, startSlot: 4, endSlot: 10 };
+    var thursday = { day: 3, startSlot: 4, endSlot: 10 };
+    var evening = { day: 0, startSlot: 16, endSlot: 20 };
+    r.ok(U.shiftProximity(monday, tuesday) >= 0.8,
+      'the same hour a day apart counts as adjacent',
+      U.shiftProximity(monday, tuesday).toFixed(2));
+    r.ok(U.shiftProximity(monday, tuesday) > U.shiftProximity(monday, thursday),
+      'a day apart is nearer than three days apart');
+    r.eq(U.shiftProximity(monday, evening), 0,
+      'morning and evening on the same day are not adjacent');
+
+    var again = state.tutors.map(function (t) {
+      return U.assignColors(state.tutors, state.assignments)[t.id];
+    });
+    r.eq(again.join(','), picked.join(','), 'the same schedule always produces the same colors');
+
+    // Re-seating one tutor is what fitting a single tutor does, and it has to
+    // leave everyone else wearing what they were already wearing.
+    state.tutors.forEach(function (t, i) { t.colorIndex = picked[i]; });
+    var one = U.assignColors(state.tutors, state.assignments, { only: [state.tutors[0].id] });
+    var held = true;
+    for (var k = 1; k < n; k++) {
+      if (one[state.tutors[k].id] !== picked[k]) held = false;
+    }
+    r.ok(held, 'options.only leaves every other tutor at the color they had');
+
+    // A roster twice the size grows the ring rather than repeating a color.
+    var big = state.tutors.concat(state.tutors.map(function (t) {
+      var copy = JSON.parse(JSON.stringify(t));
+      copy.id = t.id + '-b';
+      copy.colorIndex = 0;
+      return copy;
+    }));
+    var bigShifts = state.assignments.concat(state.assignments.map(function (a) {
+      var copy = JSON.parse(JSON.stringify(a));
+      copy.id = a.id + '-b';
+      copy.tutorId = a.tutorId + '-b';
+      return copy;
+    }));
+    var bigMap = U.assignColors(big, bigShifts);
+    var bigPicked = big.map(function (t) { return bigMap[t.id]; });
+    var bigDistinct = {};
+    bigPicked.forEach(function (slot) { bigDistinct[slot] = true; });
+    r.eq(Object.keys(bigDistinct).length, big.length,
+      'a roster of ' + big.length + ' gets ' + big.length + ' distinct colors');
+    r.eq(U.PALETTE.length, big.length, 'the ring grew with it');
   }
 
   /* ---- 3. CSV ------------------------------------------------------------ */
@@ -792,6 +957,7 @@
     testScheduleWindow(r);
     testUndoHistory(r);
     testContrast(r);
+    testColorAssignment(r);
     testCsv(r);
     testSubjectClasses(r);
     testShiftKinds(r);

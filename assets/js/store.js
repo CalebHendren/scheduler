@@ -62,8 +62,21 @@
 
   function restore(json) {
     state = migrate(JSON.parse(json));
+    syncPalette();
     mark = serialize();
     save();
+  }
+
+  /* The palette is a ring sized to the roster, so it has to be resized before
+   * anything reads a color off it. Sized to the highest index in play rather
+   * than the head count, because removing a tutor leaves the others holding
+   * the indices they already had, and a short ring would wrap two of them onto
+   * the same hue.
+   */
+  function syncPalette() {
+    var n = state.tutors.length;
+    state.tutors.forEach(function (t) { n = Math.max(n, (t.colorIndex | 0) + 1); });
+    U.setColorCount(n);
   }
 
   function commit(reason) {
@@ -71,6 +84,7 @@
     // One choke point for the class list: however it changed -- edited here,
     // imported, or stepped over by undo -- the masks follow the state.
     U.setSubjects(state.settings.subjects);
+    syncPalette();
     if (mark !== null) {
       undoStack.push({ json: mark, reason: reason });
       if (undoStack.length > MAX_HISTORY) undoStack.shift();
@@ -245,6 +259,23 @@
     return state.tutors.length;
   }
 
+  /*
+   * Re-picks tutor colors from the schedule as it now stands, so who sits next
+   * to whom decides who gets which hue instead of the order the roster was
+   * typed in. `onlyIds` limits it to those tutors and leaves the rest alone,
+   * which is what a change to one person's shifts should do.
+   *
+   * Callers commit afterwards: colors ride along in the same undo step as the
+   * schedule change that caused them.
+   */
+  function recolorTutors(onlyIds) {
+    var map = U.assignColors(state.tutors, state.assignments,
+      onlyIds ? { only: onlyIds } : null);
+    state.tutors.forEach(function (t) {
+      if (typeof map[t.id] === 'number') t.colorIndex = map[t.id];
+    });
+  }
+
   function addTutor(data) {
     var t = normalizeTutor(data || {});
     if (typeof (data && data.colorIndex) !== 'number') t.colorIndex = nextColorIndex();
@@ -404,11 +435,11 @@
 
   function loadSample() {
     state = emptyState();
-    sampleTutors().forEach(function (t, i) {
-      t.colorIndex = i;
+    sampleTutors().forEach(function (t) {
       t.maxHoursPerWeek = 15;
       addTutor(t);
     });
+    recolorTutors();
     commit('sample');
   }
 
@@ -419,6 +450,7 @@
     emptyState: emptyState,
     availability: availability,
     sampleTutors: sampleTutors,
+    recolorTutors: recolorTutors,
     on: on,
     emit: emit,
     commit: commit,

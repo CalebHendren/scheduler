@@ -451,6 +451,9 @@
     }
 
     state.assignments = result.assignments;
+    // Only this tutor moved, so only this tutor's color is re-picked -- they
+    // take a hue that works beside whoever they have just landed next to.
+    TS.store.recolorTutors([id]);
     TS.store.commit('fit-tutor');
 
     notice('Placed ' + (result.addedSlots / 2) + ' hours for ' + tutor.firstName +
@@ -521,6 +524,10 @@
     var state = TS.store.state;
     var why = running ? running.why : '';
     state.assignments = solver.result();
+    // A fresh schedule is a fresh answer to "who is next to whom", so the
+    // colors are re-picked before anyone sees it rather than left pointing at
+    // the roster order they were first handed out in.
+    TS.store.recolorTutors();
     running = null;
     setRunning(false);
     TS.store.commit('optimize');

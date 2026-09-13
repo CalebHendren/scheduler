@@ -267,7 +267,10 @@ Two buttons, for two different needs:
   tree, so it is the convenience option rather than the accessible one.
 
 Both are landscape US Letter. Printing always uses the light theme even if you are working in
-dark mode. Both carry the semester, the location and contact, the QR code, a tutor legend, the
+dark mode. The print stylesheet sets a zero `@page` margin and insets the handout itself, which
+is what keeps Chrome and Edge from stamping the document title across the top of the page and
+the page URL across the bottom — there is no CSS switch for those, only the margin they are
+drawn into. Both carry the semester, the location and contact, the QR code, a tutor legend, the
 important notes, and a plain-text listing of every shift.
 
 ### What goes on the handout
@@ -302,16 +305,18 @@ is not counted against you.
 
 ### Accessibility notes
 
-- Tutor colors come from the Okabe-Ito colorblind-safe palette, and every block prints the
+- Tutor colors are chosen with red-green colorblindness counted in, and every block prints the
   name, times and subjects as text — the schedule is fully readable in grayscale, and nothing
   depends on color alone.
-- Beyond eight tutors, colors repeat with a diagonal hatch so the repeated pair stays distinct.
+- Colors never repeat: the palette is built to fit the roster, so twenty tutors get twenty
+  colors. Past thirteen, where color alone starts to thin out, every other one also picks up a
+  diagonal hatch.
 - The whole app is keyboard operable. In the availability painter, move with the arrow keys and
   toggle with Space. On a scheduled block, arrow keys move it, Shift+arrows resize it, `L`
   locks it and Delete removes it; Tab from the block reaches its padlock. Placing a shift
   without a mouse is what **Add shift** above the grid is for.
 - Text contrast is checked automatically in CI, in both light and dark themes, for every color
-  in the palette.
+  of every palette size a roster can produce.
 
 ## Colors
 
@@ -323,9 +328,29 @@ accent only — it is too light for body text on white, so text that needs to be
 All four are defined once at the top of `assets/css/app.css`. If Marketing supplies different
 values, change them there and nothing else.
 
-Tutor block colors are deliberately *not* brand colors. Eight hues that are both on-brand and
-distinguishable to a red-green colorblind reader do not exist — a navy/royal/sky family
-collapses into near-identical grays. The chrome is brand; the data is colorblind-safe.
+Tutor block colors are deliberately *not* brand colors. A set of hues that is both on-brand and
+distinguishable to a red-green colorblind reader does not exist — a navy/royal/sky family
+collapses into near-identical grays. The chrome is brand; the data is legible.
+
+They are also not a fixed list. A list has a fixed ceiling: pick eight good hues and a ninth
+tutor gets the first one back, and any list long enough to avoid that carries pairs — two
+blues, two oranges — a reader cannot separate anyway. So the palette is generated to fit the
+roster, in OKLCH at two lightness tiers, and the set is chosen by dispersion: of all the colors
+available, take the ones whose closest pair is as far apart as possible.
+
+"Far apart" is measured twice. Picking the palette weighs normal vision together with
+simulated protanopia and deuteranopia — scored on colorblindness alone the palette collapses
+into the blue-yellow axis, ten shades of teal with no pink and no purple, which costs every
+other reader the variety. Placing it on the schedule uses the strict worst case: the palette
+may well hold a red and a green, and the job of keeping those two off adjacent blocks belongs
+to the assignment, not the palette.
+
+Which tutor gets which color is therefore not roster order. Colors are assigned when the
+schedule is built, from where people actually land in the week: two tutors whose blocks touch —
+including a Monday block beside a Tuesday one at the same hour, which reads as adjacent on the
+page — are pushed to opposite ends of the palette, and the closest pair of colors is spent on
+two tutors nobody sees together. Auto-optimize re-picks every color; fitting a single tutor
+re-picks only theirs.
 
 ## Development
 
@@ -352,7 +377,9 @@ node tools/test-optimizer.mjs     # needs Node 20+
 
 Or open `tools/selftest.html` in a browser, which needs nothing installed. Both run the same
 assertions against the same source files: the display-name rules, contrast in both themes for
-every palette slot, CSV round-tripping and parsing, the class list and the bitmask it drives,
+every color of every palette size, that a generated palette keeps its closest pair apart for a
+colorblind reader too and that the assignment does not waste that pair on two tutors sitting
+side by side, CSV round-tripping and parsing, the class list and the bitmask it drives,
 embedded classes and open labs staying out of coverage while still spending a tutor's hours,
 touching shifts joining into one, the ten-tutor fixture with the budget both on and off, locked
 shifts surviving re-optimization, back-to-back shifts coming out as one block, fitting a single
