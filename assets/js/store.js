@@ -62,21 +62,8 @@
 
   function restore(json) {
     state = migrate(JSON.parse(json));
-    syncPalette();
     mark = serialize();
     save();
-  }
-
-  /* The palette is a ring sized to the roster, so it has to be resized before
-   * anything reads a color off it. Sized to the highest index in play rather
-   * than the head count, because removing a tutor leaves the others holding
-   * the indices they already had, and a short ring would wrap two of them onto
-   * the same hue.
-   */
-  function syncPalette() {
-    var n = state.tutors.length;
-    state.tutors.forEach(function (t) { n = Math.max(n, (t.colorIndex | 0) + 1); });
-    U.setColorCount(n);
   }
 
   function commit(reason) {
@@ -84,7 +71,6 @@
     // One choke point for the class list: however it changed -- edited here,
     // imported, or stepped over by undo -- the masks follow the state.
     U.setSubjects(state.settings.subjects);
-    syncPalette();
     if (mark !== null) {
       undoStack.push({ json: mark, reason: reason });
       if (undoStack.length > MAX_HISTORY) undoStack.shift();

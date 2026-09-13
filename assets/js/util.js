@@ -143,160 +143,31 @@
   }
 
   /* ---- the tutor palette ----
-   * Generated to fit the roster, not picked from a list. A fixed list has a
-   * fixed ceiling: eight good hues meant a ninth tutor got the first one back,
-   * and any list long enough to avoid that carries pairs -- two blues, two
-   * oranges -- a reader cannot tell apart anyway.
+   * The eight Okabe-Ito colorblind-safe hues lead, because a roster that fits
+   * inside them is readable to a red-green colorblind eye without anything
+   * else having to work. The seven after them widen the list far enough that a
+   * normal roster never has to repeat one -- the old eight meant a ninth tutor
+   * was handed blue again, which is what put two blues side by side.
    *
-   * Colors are built in OKLCH, where a step means the same thing everywhere on
-   * the wheel, at two lightness tiers so a roster gets a light and a dark of a
-   * hue rather than running out of wheel. Chroma is pulled back per hue to
-   * whatever sRGB can actually print -- yellows reach further than blues --
-   * which is what keeps a generated color from coming out flat.
-   *
-   * Which of those the ring uses is chosen by dispersion rather than by even
-   * angles: evenly spaced hues are not evenly spaced to a colorblind reader,
-   * who sees a whole arc of the wheel collapse. The ring is the set whose
-   * closest pair is as far apart as possible, scored on normal vision and
-   * simulated colorblindness together -- see spreadGap for why both, and why
-   * neither one alone gets it right.
-   *
-   * The ring is rebuilt whenever the roster changes; TS.store keeps it in step.
+   * The seven were picked against the same measure the solver below uses, with
+   * the bar set at the original eight: the three closest pairs in the list are
+   * still Okabe-Ito's own, so nothing added here made the palette harder to
+   * read. Which tutor gets which is not this list's order, though --
+   * assignColors picks from the finished schedule.
    */
-  var TONE_LIGHTNESS = [0.72, 0.54];  // OKLCH L: a light tier and a dark one
-  var RING_CHROMA = 0.17;             // OKLCH C, the ceiling before gamut mapping
-  var HUE_STEP = 6;                   // candidates around the wheel
-  var ANCHOR_HUE = 258;               // the ring opens on a brand-adjacent blue
-  var HATCH_LIMIT = 13;               // past this, color alone is thin and the hatch joins in
+  var PALETTE = [
+    '#0072B2', '#D55E00', '#009E73', '#E69F00',
+    '#56B4E9', '#CC79A7', '#999933', '#6E6E6E',
+    '#2222B9', '#B92222', '#B9228C', '#27D37D',
+    '#9C5821', '#8B5CF6', '#1DDDD4'
+  ];
 
-  function oklchToLinear(lightness, chroma, hueDeg) {
-    var h = hueDeg * Math.PI / 180;
-    var a = chroma * Math.cos(h), b = chroma * Math.sin(h);
-    var l_ = lightness + 0.3963377774 * a + 0.2158037573 * b;
-    var m_ = lightness - 0.1055613458 * a - 0.0638541728 * b;
-    var s_ = lightness - 0.0894841775 * a - 1.2914855480 * b;
-    var l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_;
-    return [
-      4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-      -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-      -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
-    ];
-  }
-
-  function inGamut(linear) {
-    for (var i = 0; i < 3; i++) {
-      if (linear[i] < -0.0001 || linear[i] > 1.0001) return false;
-    }
-    return true;
-  }
-
-  // Chroma is the one that gives: lightness and hue are what the ring is built
-  // on, so they are held and the saturation is searched down until sRGB can
-  // print it.
-  function oklchHex(lightness, hueDeg) {
-    var linear = oklchToLinear(lightness, RING_CHROMA, hueDeg);
-    if (!inGamut(linear)) {
-      var lo = 0, hi = RING_CHROMA;
-      for (var i = 0; i < 18; i++) {
-        var mid = (lo + hi) / 2;
-        if (inGamut(oklchToLinear(lightness, mid, hueDeg))) lo = mid; else hi = mid;
-      }
-      linear = oklchToLinear(lightness, lo, hueDeg);
-    }
-    return rgbToHex(linear.map(function (v) {
-      var c = Math.min(1, Math.max(0, v));
-      return 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
-    }));
-  }
-
-  /* Every color the ring may draw from, and how far apart each pair of them
-   * reads. Built once: the selection below asks the same question thousands of
-   * times, and a table it can index beats recomputing the answer.
+  /* Classes are coloured from the far end of the same list. They are a
+   * different scheme on a different page, and starting where the tutors leave
+   * off is what stops the coverage page looking like a recoloured copy of the
+   * one before it.
    */
-  var pool = null, poolSpread = null;
-  function buildPool() {
-    if (pool) return;
-    pool = [];
-    var anchor = oklchHex(TONE_LIGHTNESS[0], ANCHOR_HUE);
-    pool.push(anchor);
-    for (var t = 0; t < TONE_LIGHTNESS.length; t++) {
-      for (var h = 0; h < 360; h += HUE_STEP) {
-        var hex = oklchHex(TONE_LIGHTNESS[t], h);
-        if (hex !== anchor) pool.push(hex);
-      }
-    }
-    poolSpread = [];
-    for (var i = 0; i < pool.length; i++) {
-      poolSpread.push(new Array(pool.length));
-    }
-    for (i = 0; i < pool.length; i++) {
-      poolSpread[i][i] = 0;
-      for (var j = i + 1; j < pool.length; j++) {
-        poolSpread[i][j] = poolSpread[j][i] = blockSpread(pool[i], pool[j]);
-      }
-    }
-  }
-
-  /* Farthest-point selection, then a pass that swaps any one color out for
-   * whatever widens the closest pair. Greedy alone places the first few well
-   * and then paints itself into a corner; the swap pass is what recovers.
-   *
-   * Scored on the closest pair rather than the total, so the ring is chosen for
-   * its weakest link -- one pair of blocks that read alike is the complaint,
-   * however well spread the rest of the set is.
-   */
-  function disperseRing(n) {
-    buildPool();
-    var i, j, k;
-
-    function nearestGap(candidate, ring, skip) {
-      var worst = Infinity;
-      for (var c = 0; c < ring.length; c++) {
-        if (c === skip) continue;
-        var gap = poolSpread[candidate][ring[c]];
-        if (gap < worst) worst = gap;
-      }
-      return worst;
-    }
-
-    var ring = [0];   // pool[0] is the anchor, a brand-adjacent blue
-    while (ring.length < n) {
-      var best = 0, bestGap = -1;
-      for (i = 0; i < pool.length; i++) {
-        var gap = nearestGap(i, ring, -1);
-        if (gap > bestGap) { bestGap = gap; best = i; }
-      }
-      ring.push(best);
-    }
-
-    for (var pass = 0; pass < 6 && ring.length > 1; pass++) {
-      var moved = false;
-      for (k = 0; k < ring.length; k++) {
-        var hold = nearestGap(ring[k], ring, k);
-        for (j = 0; j < pool.length; j++) {
-          var trial = nearestGap(j, ring, k);
-          if (trial > hold + 1e-9) { hold = trial; ring[k] = j; moved = true; }
-        }
-      }
-      if (!moved) break;
-    }
-    return ring.map(function (index) { return pool[index]; });
-  }
-
-  // Mutated in place rather than replaced, so everything holding TS.util.PALETTE
-  // keeps seeing the current ring -- the same arrangement SUBJECTS uses.
-  var PALETTE = [];
-  var ringCache = {};
-
-  function setColorCount(count) {
-    var n = Math.max(1, count | 0);
-    if (PALETTE.length === n) return PALETTE;
-    if (!ringCache[n]) ringCache[n] = disperseRing(n);
-    PALETTE.length = 0;
-    ringCache[n].forEach(function (hex) { PALETTE.push(hex); });
-    forgetColorMath();
-    return PALETTE;
-  }
+  var SUBJECT_OFFSET = 8;
 
   // The day is modelled 7:00 AM to 8:30 PM because someone may be available
   // then, but a schedule is drawn over the hours actually in play, never
@@ -475,6 +346,75 @@
     return out;
   }
 
+  /* ---- coverage by class ----
+   * The schedule is written tutor by tutor, but the question a student arrives
+   * with is the other way round: when can I get help with Micro? These turn one
+   * into the other.
+   *
+   * A class is covered for as long as someone who teaches it is on shift at the
+   * center, so one tutor signed up for three classes covers all three at once,
+   * and comes out as three separate runs -- which is the point. Shifts held
+   * somewhere else are somebody's hours but not the center's cover, and are
+   * left out here exactly as they are left out of the grid.
+   */
+  function subjectRuns(assignments, tutors) {
+    var masks = {}, runs = [];
+    (tutors || []).forEach(function (t) { masks[t.id] = subjectMask(t.subjects); });
+
+    var shifts = mainShifts(assignments).filter(function (a) { return masks[a.tutorId]; });
+
+    for (var subject = 0; subject < SUBJECTS.length; subject++) {
+      var bit = SUBJECTS[subject].bit;
+      var teaching = shifts.filter(function (a) { return masks[a.tutorId] & bit; });
+      if (!teaching.length) continue;
+
+      for (var day = 0; day < DAYS; day++) {
+        var today = teaching.filter(function (a) { return a.day === day; });
+        if (!today.length) continue;
+
+        // Who is on for this class in each half hour; a run is a stretch with
+        // somebody in it, however many people come and go inside it.
+        var who = [];
+        for (var slot = 0; slot < SLOTS_PER_DAY; slot++) who.push(null);
+        today.forEach(function (a) {
+          for (var slot = a.startSlot; slot < a.endSlot; slot++) {
+            if (!who[slot]) who[slot] = [];
+            if (who[slot].indexOf(a.tutorId) === -1) who[slot].push(a.tutorId);
+          }
+        });
+
+        var open = null;
+        for (var s = 0; s <= SLOTS_PER_DAY; s++) {
+          var covered = s < SLOTS_PER_DAY && who[s];
+          if (covered && !open) open = { start: s, tutorIds: [] };
+          if (covered) {
+            who[s].forEach(function (id) {
+              if (open.tutorIds.indexOf(id) === -1) open.tutorIds.push(id);
+            });
+          } else if (open) {
+            runs.push({
+              subject: subject, subjectKey: SUBJECTS[subject].key,
+              day: day, startSlot: open.start, endSlot: s, tutorIds: open.tutorIds
+            });
+            open = null;
+          }
+        }
+      }
+    }
+    return runs;
+  }
+
+  // Half hours a week each class is covered for, indexed the same as SUBJECTS,
+  // which is what lets the coverage page say how much of each is on offer.
+  function subjectSlotTotals(runs) {
+    var totals = [];
+    for (var i = 0; i < SUBJECTS.length; i++) totals.push(0);
+    (runs || []).forEach(function (run) {
+      totals[run.subject] += run.endSlot - run.startSlot;
+    });
+    return totals;
+  }
+
   /* ---- color math, shared by the app and the CI contrast test ---- */
 
   function hexToRgb(hex) {
@@ -518,22 +458,18 @@
   var INK_LIGHT = '#14181F';
   var INK_DARK = '#EEF3F9';
 
-  /* How much white a block fill is cut with. The fill is the biggest thing on
-   * the page carrying a tutor's identity, so it has to hold enough of the hue
-   * for two of them to be told apart at a glance -- washed all the way out,
-   * every block is the same cream and only the bar says who it is.
-   */
-  var BLOCK_TINT = 0.80;
+  // How much white a block fill is cut with: enough hue to tell two blocks
+  // apart, pale enough to read black text over.
+  var BLOCK_TINT = 0.86;
 
   // Block colors are derived rather than hand-picked, so the contrast test
-  // covers every slot of every ring instead of a curated subset.
-  function blockColors(colorIndex, dark) {
-    var hue = PALETTE[colorIndex % PALETTE.length];
+  // covers every color of every ring instead of a curated subset.
+  function shadeBlock(hue, dark) {
     if (dark) {
       return {
         hue: hue,
         bar: mix(hue, '#FFFFFF', 0.18),
-        bg: mix(hue, SURFACE_DARK, 0.78),
+        bg: mix(hue, SURFACE_DARK, 0.80),
         ink: INK_DARK
       };
     }
@@ -545,14 +481,17 @@
     };
   }
 
-  /* Once the ring is long enough that neighbouring hues start to look alike,
-   * every other slot is drawn with a diagonal hatch, so the two closest colors
-   * on the wheel never reach the page as pattern-identical blocks. Under the
-   * limit the ring is wide enough on its own and nothing is hatched.
-   */
-  function usesHatch(colorIndex) {
-    return PALETTE.length > HATCH_LIMIT && (colorIndex % PALETTE.length) % 2 === 1;
+  function blockColors(colorIndex, dark) {
+    return shadeBlock(PALETTE[colorIndex % PALETTE.length], dark);
   }
+
+  function subjectColors(subjectIndex, dark) {
+    return shadeBlock(PALETTE[(SUBJECT_OFFSET + subjectIndex) % PALETTE.length], dark);
+  }
+
+  // Past the end of the list a color has to come round again, and the repeat is
+  // drawn with a diagonal hatch so the pair stays distinct anyway.
+  function usesHatch(colorIndex) { return colorIndex >= PALETTE.length; }
 
   /* ---- how different two colors look ---- */
 
@@ -631,47 +570,18 @@
     );
   }
 
-  /* Choosing the ring and placing it on the page want different questions
-   * answered, and answering both with the worst case gets the palette wrong.
-   * Scored purely on what a dichromat can split, dispersion crowds the ring
-   * into the blue-yellow axis -- ten shades of teal, no pink, no purple --
-   * because that is the only arc left once red and green have collapsed. So
-   * selection weighs normal vision and the worst case together, keeping the
-   * variety every other reader gets, and placement uses the strict worst case:
-   * the ring may hold a red and a green, and the solver's job is to make sure
-   * they never end up side by side.
+  /* How far apart two colors land once they are drawn as blocks: the fill is
+   * most of what the eye gets and counts double, the identity bar is the rest.
+   * The light theme is the one that prints, so it is the one measured.
    */
-  var CVD_WEIGHT = 0.85;
-
-  function spreadGap(a, b) {
-    return (1 - CVD_WEIGHT) * deltaE(a, b) + CVD_WEIGHT * colorGap(a, b);
+  function blockGap(hueA, hueB) {
+    return (2 * colorGap(mix(hueA, SURFACE_LIGHT, BLOCK_TINT), mix(hueB, SURFACE_LIGHT, BLOCK_TINT)) +
+      colorGap(hueA, hueB)) / 3;
   }
 
-  var tintCache = {};
-  function blockTint(hex) {
-    if (tintCache[hex] === undefined) tintCache[hex] = mix(hex, SURFACE_LIGHT, BLOCK_TINT);
-    return tintCache[hex];
-  }
-
-  /* How far apart two hues land once they are drawn as blocks: the fill is most
-   * of what the eye gets and counts double, the identity bar is the rest. The
-   * light theme is the one that prints, so it is the one measured.
-   */
-  function blockMetric(hueA, hueB, gap) {
-    return (2 * gap(blockTint(hueA), blockTint(hueB)) + gap(hueA, hueB)) / 3;
-  }
-
-  function blockGap(hueA, hueB) { return blockMetric(hueA, hueB, colorGap); }
-  function blockSpread(hueA, hueB) { return blockMetric(hueA, hueB, spreadGap); }
-
+  // The palette is fixed, so every number below it is too: worked out once.
   var slotGapCache = {};
   var widestSlotGap = 0;
-
-  // The ring changes with the roster, and every number below is derived from it.
-  function forgetColorMath() {
-    slotGapCache = {};
-    widestSlotGap = 0;
-  }
 
   function slotDistance(a, b) {
     var ia = a % PALETTE.length, ib = b % PALETTE.length;
@@ -691,8 +601,7 @@
         }
       }
     }
-    // A one-color ring has no spread at all, and nothing to compare anyway.
-    return widestSlotGap || 1;
+    return widestSlotGap;
   }
 
   // 1 when two slots are indistinguishable, near 0 when nothing about them is
@@ -701,7 +610,7 @@
   // the solver around.
   function slotClash(a, b) {
     var clash = Math.pow(Math.max(0, 1 - slotDistance(a, b) / slotSpread()), 3);
-    // A repeated hue is drawn with a diagonal hatch, which carries most of the
+    // A repeated color is drawn with a diagonal hatch, which carries most of the
     // distinction by itself.
     if (usesHatch(a) !== usesHatch(b)) clash *= 0.45;
     return clash;
@@ -758,9 +667,15 @@
    * pairs is a schedule nobody complains about, and one pair of blocks that
    * read as the same color is the whole complaint. Convex cost means the
    * solver will happily take the first to avoid the second.
+   *
+   * `tier` prices the wrap. Every clash term is under 1 and there are fewer
+   * than `tier` of them, so charging a whole tier for each round past the
+   * first means no repeated color is taken while an unused one is free. Two
+   * tutors trading slots keep the rounds between them, so the tier cancels out
+   * of a swap and never blocks one.
    */
-  function seatCost(i, slot, chosen, w, skip) {
-    var sum = 0;
+  function seatCost(i, slot, chosen, w, skip, tier) {
+    var sum = tier * Math.floor(slot / PALETTE.length);
     for (var k = 0; k < chosen.length; k++) {
       if (k === i || k === skip || chosen[k] < 0) continue;
       sum += chosen[k] === slot ? TAKEN_COST
@@ -769,10 +684,10 @@
     return sum;
   }
 
-  function cheapestSeat(i, chosen, slots, w) {
+  function cheapestSeat(i, chosen, slots, w, tier) {
     var best = slots[0], bestCost = Infinity;
     for (var s = 0; s < slots.length; s++) {
-      var cost = seatCost(i, slots[s], chosen, w, -1);
+      var cost = seatCost(i, slots[s], chosen, w, -1, tier);
       if (cost < bestCost) { bestCost = cost; best = slots[s]; }
     }
     return best;
@@ -807,20 +722,19 @@
       if (!held) loose.push(i);
     }
 
-    // One slot per tutor, so there is always a free one and no two tutors ever
-    // share. `span` covers a held color from an older, longer ring as well.
-    // Sizing the ring here rather than trusting the caller is what stops two
-    // slots wrapping onto one hue and quietly defeating the whole exercise.
-    setColorCount(span);
+    // The whole palette, plus a hatched round for every wrap this roster
+    // forces, so there is always a free slot and no two tutors ever share one.
+    // `span` also covers a color a held tutor is already wearing.
+    var rounds = Math.max(1, Math.ceil(span / PALETTE.length));
     var slots = [];
-    for (i = 0; i < span; i++) slots.push(i);
+    for (i = 0; i < rounds * PALETTE.length; i++) slots.push(i);
 
     // Hardest first: a tutor who is next to everyone has the fewest good
     // options left if they are colored last.
     loose.sort(function (a, b) {
       return load[b] - load[a] || (list[a].id < list[b].id ? -1 : 1);
     });
-    loose.forEach(function (t) { chosen[t] = cheapestSeat(t, chosen, slots, w); });
+    loose.forEach(function (t) { chosen[t] = cheapestSeat(t, chosen, slots, w, n); });
 
     // Greedy settles the hard cases but can strand an easy one, and once every
     // slot is spoken for the only move left is trading two of them.
@@ -830,16 +744,16 @@
         var x = loose[a];
         for (var b = a + 1; b < loose.length; b++) {
           var y = loose[b];
-          var before = seatCost(x, chosen[x], chosen, w, y) + seatCost(y, chosen[y], chosen, w, x);
-          var after = seatCost(x, chosen[y], chosen, w, y) + seatCost(y, chosen[x], chosen, w, x);
+          var before = seatCost(x, chosen[x], chosen, w, y, n) + seatCost(y, chosen[y], chosen, w, x, n);
+          var after = seatCost(x, chosen[y], chosen, w, y, n) + seatCost(y, chosen[x], chosen, w, x, n);
           if (after < before - 1e-9) {
             var swap = chosen[x]; chosen[x] = chosen[y]; chosen[y] = swap;
             improved = true;
           }
         }
-        var moved = cheapestSeat(x, chosen, slots, w);
+        var moved = cheapestSeat(x, chosen, slots, w, n);
         if (moved !== chosen[x] &&
-            seatCost(x, moved, chosen, w, -1) < seatCost(x, chosen[x], chosen, w, -1) - 1e-9) {
+            seatCost(x, moved, chosen, w, -1, n) < seatCost(x, chosen[x], chosen, w, -1, n) - 1e-9) {
           chosen[x] = moved;
           improved = true;
         }
@@ -856,9 +770,6 @@
       Math.random().toString(36).slice(2, 9) +
       Date.now().toString(36).slice(-4);
   }
-
-  // A roster-less page still draws swatches, so the ring starts at a usable size.
-  setColorCount(8);
 
   TS.util = {
     VERSION: VERSION,
@@ -889,6 +800,8 @@
     roomLabel: roomLabel,
     daysLabel: daysLabel,
     groupOffRoom: groupOffRoom,
+    subjectRuns: subjectRuns,
+    subjectSlotTotals: subjectSlotTotals,
     PALETTE: PALETTE,
     SURFACE_LIGHT: SURFACE_LIGHT,
     SURFACE_DARK: SURFACE_DARK,
@@ -914,10 +827,10 @@
     relativeLuminance: relativeLuminance,
     contrastRatio: contrastRatio,
     blockColors: blockColors,
+    subjectColors: subjectColors,
     usesHatch: usesHatch,
     deltaE: deltaE,
     colorGap: colorGap,
-    setColorCount: setColorCount,
     blockGap: blockGap,
     slotClash: slotClash,
     shiftProximity: shiftProximity,

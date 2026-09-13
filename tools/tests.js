@@ -122,32 +122,18 @@
 
   /* ---- 2. contrast ------------------------------------------------------- */
 
-  // Ring sizes a real roster produces, plus the edges either side of the point
-  // where the hatch joins in.
-  var RING_SIZES = [1, 2, 3, 5, 8, 10, 12, 13, 14, 18, 24];
-  var HATCH_LIMIT = 13;
-
   function testContrast(r) {
     // The identity bar is decorative; the text on the block is what has to
-    // clear AA, in both themes and for every slot of every ring a roster can
-    // produce -- the ring is generated, so there is no fixed list to check.
-    var worstLight = 99, worstDark = 99, worstAt = '';
-    RING_SIZES.forEach(function (size) {
-      U.setColorCount(size);
-      for (var i = 0; i < size; i++) {
-        var light = U.blockColors(i, false);
-        var dark = U.blockColors(i, true);
-        var lr = U.contrastRatio(light.ink, light.bg);
-        var dr = U.contrastRatio(dark.ink, dark.bg);
-        if (lr < worstLight || dr < worstDark) worstAt = 'ring ' + size + ' slot ' + i;
-        worstLight = Math.min(worstLight, lr);
-        worstDark = Math.min(worstDark, dr);
-      }
-    });
-    r.ok(worstLight >= 4.5, 'light block text is AA for every generated color',
-      worstLight.toFixed(2) + ':1 at ' + worstAt);
-    r.ok(worstDark >= 4.5, 'dark block text is AA for every generated color',
-      worstDark.toFixed(2) + ':1 at ' + worstAt);
+    // clear AA, in both themes and for every color in the palette including
+    // the hatched repeats past the end of it.
+    for (var i = 0; i < U.PALETTE.length + 2; i++) {
+      var light = U.blockColors(i, false);
+      var dark = U.blockColors(i, true);
+      var lr = U.contrastRatio(light.ink, light.bg);
+      var dr = U.contrastRatio(dark.ink, dark.bg);
+      r.ok(lr >= 4.5, 'palette ' + i + ' light block text is AA', lr.toFixed(2) + ':1');
+      r.ok(dr >= 4.5, 'palette ' + i + ' dark block text is AA', dr.toFixed(2) + ':1');
+    }
 
     var brand = {
       navy: '#10305F', blue: '#0B57BE', blueDark: '#002855',
@@ -176,42 +162,33 @@
       U.contrastRatio('#6FA8FF', darkGround).toFixed(2) + ':1');
     r.ok(U.contrastRatio('#FF7A3D', darkGround) >= 3.0, 'dark theme orange clears 3:1');
 
-    /* No two tutors may resolve to fills that read alike. Up to the hatch limit
-     * the ring is asked to carry that on color alone, in the worst case across
-     * normal, protan and deutan vision -- which is the guarantee that matters,
-     * because it is the floor under every placement the solver can make.
-     */
-    RING_SIZES.forEach(function (size) {
-      if (size < 2 || size > HATCH_LIMIT) return;
-      U.setColorCount(size);
-      var worstGap = 999, worstTint = 999, pair = 'none';
-      for (var a = 0; a < size; a++) {
-        for (var b = a + 1; b < size; b++) {
-          var gap = U.blockGap(U.PALETTE[a], U.PALETTE[b]);
-          if (gap < worstGap) { worstGap = gap; pair = a + '/' + b; }
-          var ca = U.hexToRgb(U.blockColors(a, false).bg);
-          var cb = U.hexToRgb(U.blockColors(b, false).bg);
-          worstTint = Math.min(worstTint, Math.max(
-            Math.abs(ca[0] - cb[0]), Math.abs(ca[1] - cb[1]), Math.abs(ca[2] - cb[2])
-          ));
-        }
+    // No two tutors may resolve to fills that read alike, and the eight
+    // Okabe-Ito hues set the bar the seven added to them have to clear.
+    var worstTint = 999, tintPair = 'none';
+    for (var a = 0; a < U.PALETTE.length; a++) {
+      for (var b = a + 1; b < U.PALETTE.length; b++) {
+        var ca = U.hexToRgb(U.blockColors(a, false).bg);
+        var cb = U.hexToRgb(U.blockColors(b, false).bg);
+        var spread = Math.max(
+          Math.abs(ca[0] - cb[0]), Math.abs(ca[1] - cb[1]), Math.abs(ca[2] - cb[2])
+        );
+        if (spread < worstTint) { worstTint = spread; tintPair = a + '/' + b; }
       }
-      r.ok(worstGap >= 6, 'ring of ' + size + ' keeps every pair apart for every reader',
-        'slots ' + pair + ' at ' + worstGap.toFixed(1));
-      r.ok(worstTint >= 8, 'ring of ' + size + ' draws every tutor a distinguishable fill',
-        'max channel delta ' + worstTint);
-    });
+    }
+    r.ok(U.PALETTE.length >= 15, 'the palette is wide enough for a normal roster',
+      U.PALETTE.length + ' colors');
+    r.ok(worstTint >= 8, 'every pair of palette tints is distinguishable',
+      'slots ' + tintPair + ' at max channel delta ' + worstTint);
 
-    // Past the limit, color is carrying more than it can and the diagonal hatch
-    // comes in as a second channel rather than the ring quietly getting worse.
-    U.setColorCount(HATCH_LIMIT);
-    r.ok(!U.usesHatch(1), 'at the limit the ring still runs on color alone');
-    U.setColorCount(HATCH_LIMIT + 1);
-    r.ok(U.usesHatch(1) && !U.usesHatch(0), 'past it every other slot picks up the hatch');
+    // Classes are coloured from the same list, so the coverage page inherits
+    // that separation rather than needing a scheme of its own -- but it must
+    // not open on the same color the tutor page does.
+    r.ok(U.subjectColors(0, false).hue !== U.blockColors(0, false).hue,
+      'the class scheme does not start where the tutor scheme starts');
 
-    /* Dispersion on its own would happily hand a red and a green to two tutors
-     * a deuteranope cannot tell apart. The gap the ring is built from has to
-     * shrink for a pair like that, or the colorblind case is invisible to it.
+    /* A red and a green are far apart to most readers and the same color to a
+     * deuteranope. The gap the solver works from has to shrink for a pair like
+     * that, or the colorblind case is invisible to it.
      */
     var normal = U.deltaE('#D53E00', '#009E6E');
     var worstCase = U.colorGap('#D53E00', '#009E6E');
@@ -228,9 +205,6 @@
     var map = U.assignColors(state.tutors, state.assignments);
     var picked = state.tutors.map(function (t) { return map[t.id]; });
     r.eq(Object.keys(map).length, state.tutors.length, 'every tutor is given a color');
-    r.eq(U.PALETTE.length, state.tutors.length,
-      'the ring is sized to the roster, so no color is handed out twice');
-
     var distinct = {};
     picked.forEach(function (slot) { distinct[slot] = true; });
     r.eq(Object.keys(distinct).length, picked.length, 'no two tutors share a slot');
@@ -238,16 +212,16 @@
     var w = U.proximityMatrix(state.tutors, state.assignments);
     var n = state.tutors.length;
 
-    // The closest any two colors in this ring come, which is the floor under
-    // every arrangement of it -- the solver cannot beat it, only avoid wasting
-    // it on the pair of tutors a reader sees together.
+    // The closest any two colors the roster actually uses come. The solver
+    // cannot beat it, only avoid spending it on a pair of tutors a reader
+    // takes in together.
     var floor = Infinity;
     for (var a = 0; a < n; a++) {
       for (var b = a + 1; b < n; b++) {
-        floor = Math.min(floor, U.blockGap(U.PALETTE[a], U.PALETTE[b]));
+        floor = Math.min(floor, U.blockGap(
+          U.PALETTE[picked[a] % U.PALETTE.length], U.PALETTE[picked[b] % U.PALETTE.length]));
       }
     }
-    r.ok(floor >= 6, 'the ring itself keeps its closest pair apart', floor.toFixed(1));
 
     // How near the closest pair of colors lands to a pair of tutors a reader
     // takes in together -- the case in the bug report, including the cross-day
@@ -318,7 +292,8 @@
     }
     r.ok(held, 'options.only leaves every other tutor at the color they had');
 
-    // A roster twice the size grows the ring rather than repeating a color.
+    // A roster past the end of the palette has to repeat a color, and every
+    // repeat has to be hatched -- but the plain colors go first.
     var big = state.tutors.concat(state.tutors.map(function (t) {
       var copy = JSON.parse(JSON.stringify(t));
       copy.id = t.id + '-b';
@@ -336,8 +311,96 @@
     var bigDistinct = {};
     bigPicked.forEach(function (slot) { bigDistinct[slot] = true; });
     r.eq(Object.keys(bigDistinct).length, big.length,
-      'a roster of ' + big.length + ' gets ' + big.length + ' distinct colors');
-    r.eq(U.PALETTE.length, big.length, 'the ring grew with it');
+      'a roster of ' + big.length + ' still gets ' + big.length + ' distinct slots');
+    var hatched = bigPicked.filter(function (slot) { return U.usesHatch(slot); }).length;
+    r.eq(hatched, Math.max(0, big.length - U.PALETTE.length),
+      'exactly the overflow is hatched, so plain colors are spent first');
+  }
+
+  /* ---- 2c. coverage by class --------------------------------------------- */
+
+  function testSubjectRuns(r) {
+    // Three tutors, deliberately overlapping in what they teach, so a run can
+    // be checked for who it names as well as when it runs.
+    var tutors = [
+      TS.store.normalizeTutor({ id: 'all', firstName: 'Ada',
+        subjects: { bio: true, micro: true, ap1: true } }),
+      TS.store.normalizeTutor({ id: 'bio', firstName: 'Ben', subjects: { bio: true } }),
+      TS.store.normalizeTutor({ id: 'none', firstName: 'Cy', subjects: {} })
+    ];
+    var shift = function (id, day, a, b, kind, room) {
+      return TS.store.normalizeAssignment({
+        id: id + day + a, tutorId: id, day: day, startSlot: a, endSlot: b,
+        kind: kind || 'main', room: room || ''
+      });
+    };
+
+    // The case from the bug report: one tutor signed up for three classes,
+    // working one shift, has to come out as three separate runs over the same
+    // hours -- one per class, not one block wearing three labels.
+    var runs = U.subjectRuns([shift('all', 0, 4, 10)], tutors);
+    r.eq(runs.length, 3, 'one tutor teaching three classes covers three of them at once');
+    var keys = runs.map(function (run) { return run.subjectKey; }).sort().join(',');
+    r.eq(keys, 'ap1,bio,micro', 'and the three are the ones they teach');
+    var sameHours = runs.every(function (run) {
+      return run.day === 0 && run.startSlot === 4 && run.endSlot === 10;
+    });
+    r.ok(sameHours, 'all three runs cover exactly the hours they worked');
+    r.eq(runs[0].tutorIds.join(','), 'all', 'and each names them');
+
+    // Two tutors back to back on the same class are one stretch of cover, and
+    // the run names both, because either of them may be the one sitting there.
+    var joined = U.subjectRuns([shift('all', 1, 4, 8), shift('bio', 1, 8, 12)], tutors);
+    var bioRun = joined.filter(function (run) {
+      return run.subjectKey === 'bio' && run.day === 1;
+    });
+    r.eq(bioRun.length, 1, 'back-to-back shifts on one class are a single run');
+    r.eq(bioRun[0].startSlot + '-' + bioRun[0].endSlot, '4-12', 'running the length of both');
+    r.eq(bioRun[0].tutorIds.slice().sort().join(','), 'all,bio', 'naming everyone in it');
+    var microRun = joined.filter(function (run) { return run.subjectKey === 'micro'; });
+    r.eq(microRun.length, 1, 'the class only one of them teaches stops when they do');
+    r.eq(microRun[0].endSlot, 8, 'at the end of that tutor’s shift');
+
+    // An hour with nobody in splits the cover rather than papering over it.
+    var split = U.subjectRuns([shift('bio', 2, 4, 8), shift('bio', 2, 10, 14)], tutors);
+    r.eq(split.length, 2, 'a gap in cover breaks the run in two');
+    r.eq(split[0].endSlot + '/' + split[1].startSlot, '8/10', 'on either side of the gap');
+
+    // Hours held somewhere else are that tutor's time but not the centre's
+    // cover, exactly as they are left out of the grid.
+    var elsewhere = U.subjectRuns([shift('all', 3, 4, 10, 'lab', 'OMN 286')], tutors);
+    r.eq(elsewhere.length, 0, 'an open lab is not cover at the center');
+
+    // A tutor with nothing checked cannot cover anything.
+    r.eq(U.subjectRuns([shift('none', 4, 4, 10)], tutors).length, 0,
+      'a tutor with no classes covers none');
+
+    var totals = U.subjectSlotTotals(U.subjectRuns([shift('all', 0, 4, 10)], tutors));
+    r.eq(totals.length, U.SUBJECTS.length, 'the totals line up with the class list');
+    r.eq(totals[0], 6, 'and count half hours of cover');
+
+    // The real fixture, as a sanity check that it holds together at size.
+    var state = fixtureState();
+    state.assignments = TS.optimizer.optimize(state, { iterations: 4000 });
+    var real = U.subjectRuns(state.assignments, state.tutors);
+    r.ok(real.length > 0, 'the fixture schedule covers something', real.length + ' runs');
+    var sane = real.every(function (run) {
+      return run.endSlot > run.startSlot && run.tutorIds.length > 0 &&
+        run.subject >= 0 && run.subject < U.SUBJECTS.length;
+    });
+    r.ok(sane, 'every run has an end after its start and somebody in it');
+
+    // Cover can only ever be as long as somebody is actually on shift for it.
+    var worked = 0;
+    U.mainShifts(state.assignments).forEach(function (a) {
+      var tutor = TS.store.getTutor(a.tutorId) ||
+        state.tutors.filter(function (t) { return t.id === a.tutorId; })[0];
+      if (tutor && U.subjectMask(tutor.subjects)) worked += a.endSlot - a.startSlot;
+    });
+    var covered = U.subjectSlotTotals(real).reduce(function (sum, v) { return sum + v; }, 0);
+    r.ok(covered <= worked * U.SUBJECTS.length,
+      'no class is covered for longer than anyone was there to cover it',
+      covered + ' covered half hours against ' + worked + ' worked');
   }
 
   /* ---- 3. CSV ------------------------------------------------------------ */
@@ -958,6 +1021,7 @@
     testUndoHistory(r);
     testContrast(r);
     testColorAssignment(r);
+    testSubjectRuns(r);
     testCsv(r);
     testSubjectClasses(r);
     testShiftKinds(r);
