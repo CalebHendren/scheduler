@@ -245,6 +245,23 @@
     return state.tutors.length;
   }
 
+  /*
+   * Re-picks tutor colors from the schedule as it now stands, so who sits next
+   * to whom decides who gets which hue instead of the order the roster was
+   * typed in. `onlyIds` limits it to those tutors and leaves the rest alone,
+   * which is what a change to one person's shifts should do.
+   *
+   * Callers commit afterwards: colors ride along in the same undo step as the
+   * schedule change that caused them.
+   */
+  function recolorTutors(onlyIds) {
+    var map = U.assignColors(state.tutors, state.assignments,
+      onlyIds ? { only: onlyIds } : null);
+    state.tutors.forEach(function (t) {
+      if (typeof map[t.id] === 'number') t.colorIndex = map[t.id];
+    });
+  }
+
   function addTutor(data) {
     var t = normalizeTutor(data || {});
     if (typeof (data && data.colorIndex) !== 'number') t.colorIndex = nextColorIndex();
@@ -404,11 +421,11 @@
 
   function loadSample() {
     state = emptyState();
-    sampleTutors().forEach(function (t, i) {
-      t.colorIndex = i;
+    sampleTutors().forEach(function (t) {
       t.maxHoursPerWeek = 15;
       addTutor(t);
     });
+    recolorTutors();
     commit('sample');
   }
 
@@ -419,6 +436,7 @@
     emptyState: emptyState,
     availability: availability,
     sampleTutors: sampleTutors,
+    recolorTutors: recolorTutors,
     on: on,
     emit: emit,
     commit: commit,

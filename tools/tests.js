@@ -124,7 +124,8 @@
 
   function testContrast(r) {
     // The identity bar is decorative; the text on the block is what has to
-    // clear AA, in both themes and for every palette slot including wraps.
+    // clear AA, in both themes and for every color in the palette including
+    // the hatched repeats past the end of it.
     for (var i = 0; i < U.PALETTE.length + 2; i++) {
       var light = U.blockColors(i, false);
       var dark = U.blockColors(i, true);
@@ -161,7 +162,9 @@
       U.contrastRatio('#6FA8FF', darkGround).toFixed(2) + ':1');
     r.ok(U.contrastRatio('#FF7A3D', darkGround) >= 3.0, 'dark theme orange clears 3:1');
 
-    // Adjacent tutors must not resolve to visually identical fills.
+    // No two tutors may resolve to fills that read alike, and the eight
+    // Okabe-Ito hues set the bar the seven added to them have to clear.
+    var worstTint = 999, tintPair = 'none';
     for (var a = 0; a < U.PALETTE.length; a++) {
       for (var b = a + 1; b < U.PALETTE.length; b++) {
         var ca = U.hexToRgb(U.blockColors(a, false).bg);
@@ -169,10 +172,235 @@
         var spread = Math.max(
           Math.abs(ca[0] - cb[0]), Math.abs(ca[1] - cb[1]), Math.abs(ca[2] - cb[2])
         );
-        r.ok(spread >= 8, 'palette tints ' + a + ' and ' + b + ' are distinguishable',
-          'max channel delta ' + spread);
+        if (spread < worstTint) { worstTint = spread; tintPair = a + '/' + b; }
       }
     }
+    r.ok(U.PALETTE.length >= 15, 'the palette is wide enough for a normal roster',
+      U.PALETTE.length + ' colors');
+    r.ok(worstTint >= 8, 'every pair of palette tints is distinguishable',
+      'slots ' + tintPair + ' at max channel delta ' + worstTint);
+
+    // Classes are coloured from the same list, so the coverage page inherits
+    // that separation rather than needing a scheme of its own -- but it must
+    // not open on the same color the tutor page does.
+    r.ok(U.subjectColors(0, false).hue !== U.blockColors(0, false).hue,
+      'the class scheme does not start where the tutor scheme starts');
+
+    /* A red and a green are far apart to most readers and the same color to a
+     * deuteranope. The gap the solver works from has to shrink for a pair like
+     * that, or the colorblind case is invisible to it.
+     */
+    var normal = U.deltaE('#D53E00', '#009E6E');
+    var worstCase = U.colorGap('#D53E00', '#009E6E');
+    r.ok(worstCase < normal, 'a red/green pair reads closer once colorblindness is counted',
+      worstCase.toFixed(1) + ' vs ' + normal.toFixed(1) + ' to normal vision');
+  }
+
+  /* ---- 2b. color assignment ---------------------------------------------- */
+
+  function testColorAssignment(r) {
+    var state = fixtureState();
+    state.assignments = TS.optimizer.optimize(state, { iterations: 4000 });
+
+    var map = U.assignColors(state.tutors, state.assignments);
+    var picked = state.tutors.map(function (t) { return map[t.id]; });
+    r.eq(Object.keys(map).length, state.tutors.length, 'every tutor is given a color');
+    var distinct = {};
+    picked.forEach(function (slot) { distinct[slot] = true; });
+    r.eq(Object.keys(distinct).length, picked.length, 'no two tutors share a slot');
+
+    var w = U.proximityMatrix(state.tutors, state.assignments);
+    var n = state.tutors.length;
+
+    // The closest any two colors the roster actually uses come. The solver
+    // cannot beat it, only avoid spending it on a pair of tutors a reader
+    // takes in together.
+    var floor = Infinity;
+    for (var a = 0; a < n; a++) {
+      for (var b = a + 1; b < n; b++) {
+        floor = Math.min(floor, U.blockGap(
+          U.PALETTE[picked[a] % U.PALETTE.length], U.PALETTE[picked[b] % U.PALETTE.length]));
+      }
+    }
+
+    // How near the closest pair of colors lands to a pair of tutors a reader
+    // takes in together -- the case in the bug report, including the cross-day
+    // one, a Monday block beside a Tuesday block at the same hour.
+    function closestTouching(slots) {
+      var gap = Infinity, pair = 'none';
+      for (var i = 0; i < n; i++) {
+        for (var j = i + 1; j < n; j++) {
+          if (w[i][j] < 0.8) continue;
+          var seen = U.blockGap(U.PALETTE[slots[i] % U.PALETTE.length],
+            U.PALETTE[slots[j] % U.PALETTE.length]);
+          if (seen < gap) {
+            gap = seen;
+            pair = state.tutors[i].firstName + '/' + state.tutors[j].firstName;
+          }
+        }
+      }
+      return { gap: gap, pair: pair };
+    }
+
+    function totalClash(slots) {
+      var total = 0;
+      for (var i = 0; i < n; i++) {
+        for (var j = i + 1; j < n; j++) total += w[i][j] * U.slotClash(slots[i], slots[j]);
+      }
+      return total;
+    }
+
+    var sequential = state.tutors.map(function (t, i) { return i; });
+    var dynamic = closestTouching(picked), byOrder = closestTouching(sequential);
+
+    r.ok(dynamic.gap < Infinity, 'the fixture schedule really does put tutors side by side');
+    r.ok(dynamic.gap > floor + 0.01,
+      'the ring’s closest pair is spent on two tutors nobody sees together',
+      dynamic.pair + ' at ' + dynamic.gap.toFixed(1) + ' against a floor of ' + floor.toFixed(1));
+    r.ok(dynamic.gap >= byOrder.gap, 'and never does worse than roster order did',
+      dynamic.gap.toFixed(1) + ' vs ' + byOrder.gap.toFixed(1));
+    r.ok(totalClash(picked) < totalClash(sequential),
+      'schedule-aware colors beat roster-order colors overall',
+      totalClash(picked).toFixed(3) + ' vs ' + totalClash(sequential).toFixed(3));
+
+    // A block one day over at the same hour is as adjacent as one an hour later
+    // in the same column, and the model has to say so.
+    var monday = { day: 0, startSlot: 4, endSlot: 10 };
+    var tuesday = { day: 1, startSlot: 4, endSlot: 10 };
+    var thursday = { day: 3, startSlot: 4, endSlot: 10 };
+    var evening = { day: 0, startSlot: 16, endSlot: 20 };
+    r.ok(U.shiftProximity(monday, tuesday) >= 0.8,
+      'the same hour a day apart counts as adjacent',
+      U.shiftProximity(monday, tuesday).toFixed(2));
+    r.ok(U.shiftProximity(monday, tuesday) > U.shiftProximity(monday, thursday),
+      'a day apart is nearer than three days apart');
+    r.eq(U.shiftProximity(monday, evening), 0,
+      'morning and evening on the same day are not adjacent');
+
+    var again = state.tutors.map(function (t) {
+      return U.assignColors(state.tutors, state.assignments)[t.id];
+    });
+    r.eq(again.join(','), picked.join(','), 'the same schedule always produces the same colors');
+
+    // Re-seating one tutor is what fitting a single tutor does, and it has to
+    // leave everyone else wearing what they were already wearing.
+    state.tutors.forEach(function (t, i) { t.colorIndex = picked[i]; });
+    var one = U.assignColors(state.tutors, state.assignments, { only: [state.tutors[0].id] });
+    var held = true;
+    for (var k = 1; k < n; k++) {
+      if (one[state.tutors[k].id] !== picked[k]) held = false;
+    }
+    r.ok(held, 'options.only leaves every other tutor at the color they had');
+
+    // A roster past the end of the palette has to repeat a color, and every
+    // repeat has to be hatched -- but the plain colors go first.
+    var big = state.tutors.concat(state.tutors.map(function (t) {
+      var copy = JSON.parse(JSON.stringify(t));
+      copy.id = t.id + '-b';
+      copy.colorIndex = 0;
+      return copy;
+    }));
+    var bigShifts = state.assignments.concat(state.assignments.map(function (a) {
+      var copy = JSON.parse(JSON.stringify(a));
+      copy.id = a.id + '-b';
+      copy.tutorId = a.tutorId + '-b';
+      return copy;
+    }));
+    var bigMap = U.assignColors(big, bigShifts);
+    var bigPicked = big.map(function (t) { return bigMap[t.id]; });
+    var bigDistinct = {};
+    bigPicked.forEach(function (slot) { bigDistinct[slot] = true; });
+    r.eq(Object.keys(bigDistinct).length, big.length,
+      'a roster of ' + big.length + ' still gets ' + big.length + ' distinct slots');
+    var hatched = bigPicked.filter(function (slot) { return U.usesHatch(slot); }).length;
+    r.eq(hatched, Math.max(0, big.length - U.PALETTE.length),
+      'exactly the overflow is hatched, so plain colors are spent first');
+  }
+
+  /* ---- 2c. coverage by class --------------------------------------------- */
+
+  function testSubjectRuns(r) {
+    // Three tutors, deliberately overlapping in what they teach, so a run can
+    // be checked for who it names as well as when it runs.
+    var tutors = [
+      TS.store.normalizeTutor({ id: 'all', firstName: 'Ada',
+        subjects: { bio: true, micro: true, ap1: true } }),
+      TS.store.normalizeTutor({ id: 'bio', firstName: 'Ben', subjects: { bio: true } }),
+      TS.store.normalizeTutor({ id: 'none', firstName: 'Cy', subjects: {} })
+    ];
+    var shift = function (id, day, a, b, kind, room) {
+      return TS.store.normalizeAssignment({
+        id: id + day + a, tutorId: id, day: day, startSlot: a, endSlot: b,
+        kind: kind || 'main', room: room || ''
+      });
+    };
+
+    // The case from the bug report: one tutor signed up for three classes,
+    // working one shift, has to come out as three separate runs over the same
+    // hours -- one per class, not one block wearing three labels.
+    var runs = U.subjectRuns([shift('all', 0, 4, 10)], tutors);
+    r.eq(runs.length, 3, 'one tutor teaching three classes covers three of them at once');
+    var keys = runs.map(function (run) { return run.subjectKey; }).sort().join(',');
+    r.eq(keys, 'ap1,bio,micro', 'and the three are the ones they teach');
+    var sameHours = runs.every(function (run) {
+      return run.day === 0 && run.startSlot === 4 && run.endSlot === 10;
+    });
+    r.ok(sameHours, 'all three runs cover exactly the hours they worked');
+    r.eq(runs[0].tutorIds.join(','), 'all', 'and each names them');
+
+    // Two tutors back to back on the same class are one stretch of cover, and
+    // the run names both, because either of them may be the one sitting there.
+    var joined = U.subjectRuns([shift('all', 1, 4, 8), shift('bio', 1, 8, 12)], tutors);
+    var bioRun = joined.filter(function (run) {
+      return run.subjectKey === 'bio' && run.day === 1;
+    });
+    r.eq(bioRun.length, 1, 'back-to-back shifts on one class are a single run');
+    r.eq(bioRun[0].startSlot + '-' + bioRun[0].endSlot, '4-12', 'running the length of both');
+    r.eq(bioRun[0].tutorIds.slice().sort().join(','), 'all,bio', 'naming everyone in it');
+    var microRun = joined.filter(function (run) { return run.subjectKey === 'micro'; });
+    r.eq(microRun.length, 1, 'the class only one of them teaches stops when they do');
+    r.eq(microRun[0].endSlot, 8, 'at the end of that tutor’s shift');
+
+    // An hour with nobody in splits the cover rather than papering over it.
+    var split = U.subjectRuns([shift('bio', 2, 4, 8), shift('bio', 2, 10, 14)], tutors);
+    r.eq(split.length, 2, 'a gap in cover breaks the run in two');
+    r.eq(split[0].endSlot + '/' + split[1].startSlot, '8/10', 'on either side of the gap');
+
+    // Hours held somewhere else are that tutor's time but not the centre's
+    // cover, exactly as they are left out of the grid.
+    var elsewhere = U.subjectRuns([shift('all', 3, 4, 10, 'lab', 'OMN 286')], tutors);
+    r.eq(elsewhere.length, 0, 'an open lab is not cover at the center');
+
+    // A tutor with nothing checked cannot cover anything.
+    r.eq(U.subjectRuns([shift('none', 4, 4, 10)], tutors).length, 0,
+      'a tutor with no classes covers none');
+
+    var totals = U.subjectSlotTotals(U.subjectRuns([shift('all', 0, 4, 10)], tutors));
+    r.eq(totals.length, U.SUBJECTS.length, 'the totals line up with the class list');
+    r.eq(totals[0], 6, 'and count half hours of cover');
+
+    // The real fixture, as a sanity check that it holds together at size.
+    var state = fixtureState();
+    state.assignments = TS.optimizer.optimize(state, { iterations: 4000 });
+    var real = U.subjectRuns(state.assignments, state.tutors);
+    r.ok(real.length > 0, 'the fixture schedule covers something', real.length + ' runs');
+    var sane = real.every(function (run) {
+      return run.endSlot > run.startSlot && run.tutorIds.length > 0 &&
+        run.subject >= 0 && run.subject < U.SUBJECTS.length;
+    });
+    r.ok(sane, 'every run has an end after its start and somebody in it');
+
+    // Cover can only ever be as long as somebody is actually on shift for it.
+    var worked = 0;
+    U.mainShifts(state.assignments).forEach(function (a) {
+      var tutor = TS.store.getTutor(a.tutorId) ||
+        state.tutors.filter(function (t) { return t.id === a.tutorId; })[0];
+      if (tutor && U.subjectMask(tutor.subjects)) worked += a.endSlot - a.startSlot;
+    });
+    var covered = U.subjectSlotTotals(real).reduce(function (sum, v) { return sum + v; }, 0);
+    r.ok(covered <= worked * U.SUBJECTS.length,
+      'no class is covered for longer than anyone was there to cover it',
+      covered + ' covered half hours against ' + worked + ' worked');
   }
 
   /* ---- 3. CSV ------------------------------------------------------------ */
@@ -792,6 +1020,8 @@
     testScheduleWindow(r);
     testUndoHistory(r);
     testContrast(r);
+    testColorAssignment(r);
+    testSubjectRuns(r);
     testCsv(r);
     testSubjectClasses(r);
     testShiftKinds(r);

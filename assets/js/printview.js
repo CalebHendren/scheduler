@@ -111,6 +111,118 @@
    * collapsed, so a floating tutor with the same Tuesday and Thursday window
    * reads as one entry.
    */
+  /* The same grid read the other way round: one lane per class rather than per
+   * tutor, so a student can find their class and see when it is covered. A day
+   * only carries lanes for the classes actually on offer that day -- laying out
+   * every class in every column would spend half the page on empty lanes.
+   */
+  function subjectLaneGrid(runs, day) {
+    var today = runs.filter(function (run) { return run.day === day; });
+    var lanes = [];
+    today.forEach(function (run) {
+      if (lanes.indexOf(run.subject) === -1) lanes.push(run.subject);
+    });
+    lanes.sort(function (a, b) { return a - b; });
+
+    var grid = lanes.map(function () {
+      var row = new Array(U.SLOTS_PER_DAY);
+      for (var s = 0; s < U.SLOTS_PER_DAY; s++) row[s] = null;
+      return row;
+    });
+    today.forEach(function (run) {
+      var lane = lanes.indexOf(run.subject);
+      for (var s = run.startSlot; s < run.endSlot; s++) grid[lane][s] = run;
+    });
+
+    return { lanes: Math.max(1, lanes.length), subjects: lanes, grid: grid };
+  }
+
+  function subjectCell(run, labels, cls) {
+    var subject = U.SUBJECTS[run.subject];
+    var colors = U.subjectColors(run.subject, false);
+    var who = run.tutorIds.map(function (id) {
+      var tutor = TS.store.getTutor(id);
+      return tutor ? labels[tutor.id] : '';
+    }).filter(function (name) { return !!name; });
+
+    return '<td class="' + cls + '" rowspan="' + (run.endSlot - run.startSlot) + '"' +
+      ' style="background:' + colors.bg + ';border-left:4px solid ' + colors.bar +
+      ';color:' + colors.ink + '">' +
+      '<span class="pv-block__name">' + esc(subject.short) + '</span>' +
+      '<span class="pv-block__time">' + esc(U.formatRange(run.startSlot, run.endSlot)) + '</span>' +
+      '<span class="pv-block__who">' + esc(who.join(', ') || 'unstaffed') + '</span>' +
+      '<span class="visually-hidden">' + esc(subject.label) +
+      (who.length ? ', with ' + esc(U.listSentence(who)) : '') + '</span>' +
+      '</td>';
+  }
+
+  function buildSubjectTable(state, labels) {
+    var runs = U.subjectRuns(state.assignments, state.tutors);
+    if (!runs.length) {
+      return '<section class="pv-subjects"><h2>Coverage by class</h2>' +
+        '<p>No class is covered yet.</p></section>';
+    }
+
+    var win = U.scheduleWindow(U.mainShifts(state.assignments));
+    var days = [];
+    for (var d = 0; d < U.DAYS; d++) days.push(subjectLaneGrid(runs, d));
+
+    var html = '<section class="pv-subjects">' +
+      '<h2>Coverage by class</h2>' +
+      '<p class="pv-subjects__lede">When each class is covered, and who may be in. ' +
+      'One tutor signed up for several classes covers all of them at once, so the ' +
+      'same hour appears under each.</p>' +
+      '<table class="pv-table"><caption class="visually-hidden">' +
+      'Weekly class coverage, Monday through Friday, ' +
+      esc(U.formatMinutes(U.slotStartMinutes(win.start))) + ' to ' +
+      esc(U.formatMinutes(U.slotStartMinutes(win.end))) + '</caption><thead><tr>' +
+      '<th scope="col" class="pv-time-head pv-dayend">Time</th>';
+    for (var i = 0; i < U.DAYS; i++) {
+      html += '<th scope="' + (days[i].lanes > 1 ? 'colgroup' : 'col') + '"' +
+        ' class="pv-dayend"' +
+        (days[i].lanes > 1 ? ' colspan="' + days[i].lanes + '"' : '') + '>' +
+        U.DAY_NAMES[i] + '</th>';
+    }
+    html += '</tr></thead><tbody>';
+
+    for (var s = win.start; s < win.end; s++) {
+      var onHour = U.slotStartMinutes(s) % 60 === 0;
+      html += '<tr' + (onHour ? ' class="pv-hour"' : '') + '>' +
+        '<th scope="row" class="pv-time">' +
+        (onHour ? esc(U.formatMinutes(U.slotStartMinutes(s))) : '') + '</th>';
+
+      for (var dd = 0; dd < U.DAYS; dd++) {
+        for (var l = 0; l < days[dd].lanes; l++) {
+          var run = days[dd].grid[l] ? days[dd].grid[l][s] : null;
+          if (!run) {
+            html += '<td class="' + cellClass('pv-empty', dd, l, days[dd].lanes) + '"></td>';
+            continue;
+          }
+          if (run.startSlot === s) {
+            html += subjectCell(run, labels, cellClass('pv-block', dd, l, days[dd].lanes));
+          }
+          // slots after the first are absorbed by the rowspan above
+        }
+      }
+      html += '</tr>';
+    }
+
+    return html + '</tbody></table>' + buildSubjectLegend(runs) + '</section>';
+  }
+
+  function buildSubjectLegend(runs) {
+    var totals = U.subjectSlotTotals(runs);
+    var items = U.SUBJECTS.map(function (subject, i) {
+      var colors = U.subjectColors(i, false);
+      return '<li><span class="pv-swatch" style="background:' + colors.bg +
+        ';border-left:5px solid ' + colors.bar + '"></span>' +
+        esc(subject.label) + ' <span class="pv-legend__subjects">' +
+        esc(U.hoursLabel(totals[i])) + ' a week</span></li>';
+    }).join('');
+    return '<section class="pv-legend pv-legend--subjects"><h2>Classes</h2><ul>' +
+      items + '</ul></section>';
+  }
+
   function buildOffRoom(state, labels) {
     var groups = U.groupOffRoom(state.assignments);
     if (!groups.length) return '';
@@ -216,13 +328,20 @@
         '</div>' +
         buildLegend(state, labels) +
       '</div>' +
+      buildListing(state, labels) +
+      // The coverage page, and the listing again behind it: printed double
+      // sided, each sheet then carries a calendar on one face and the shift
+      // listing on the other, whichever sheet someone picks up.
+      buildSubjectTable(state, labels) +
       buildListing(state, labels);
   }
 
   TS.printview = {
     render: render,
     laneGrid: laneGrid,
+    subjectLaneGrid: subjectLaneGrid,
     buildListing: buildListing,
+    buildSubjectTable: buildSubjectTable,
     buildOffRoom: buildOffRoom
   };
 })(typeof window !== 'undefined' ? window : globalThis);

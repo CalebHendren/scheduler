@@ -259,15 +259,37 @@ Two buttons, for two different needs:
 
 - **Print / Save as PDF** — the one to use for anything you hand out or post. It prints from a
   real HTML table with proper row and column headers, so the PDF Chrome and Edge produce has
-  selectable text, keeps its table structure, and carries a document language. Two pages: the
-  calendar, the notes, the QR code and the legend on page 1, and a plain-text listing of every
-  shift, in two columns, on page 2.
-- **Download PDF** — one click, no print dialog, drawn directly with jsPDF. Same landscape
-  layout and real text (nothing is a screenshot), but jsPDF does not emit a tagged structure
-  tree, so it is the convenience option rather than the accessible one.
+  selectable text, keeps its table structure, and carries a document language. Four pages: the
+  calendar, the notes, the QR code and the legend on page 1; a plain-text listing of every
+  shift, in two columns, on page 2; **Coverage by class** on page 3; and the listing again on
+  page 4.
+- **Download PDF** — one click, no print dialog, drawn directly with jsPDF. Same four pages,
+  same landscape layout and real text (nothing is a screenshot), but jsPDF does not emit a
+  tagged structure tree, so it is the convenience option rather than the accessible one.
+
+### Coverage by class
+
+Page 3 is the same week read the other way round. The schedule is written tutor by tutor, but
+the question a student turns up with is *when can I get help with Micro?* — so page 3 gives
+each class its own color and its own lane, and shows the stretches it is covered for, with the
+tutors who may be in written inside.
+
+A tutor signed up for three classes covers all three the moment they sit down, so one 9–12
+shift by that tutor is three blocks at 9–12, one per class. That is the point of the page, not
+double counting: the legend's weekly hours are hours of cover per class, and they can add up to
+more than the center is open.
+
+Only hours at the center count. An embedded tutor sitting in a class across campus is their
+time but not the center's cover, and is left out here exactly as it is left out of the grid.
+
+The listing from page 2 repeats on page 4, so a double-sided print gives a sheet with a
+calendar on one face and the shift listing on the other, whichever sheet someone picks up.
 
 Both are landscape US Letter. Printing always uses the light theme even if you are working in
-dark mode. Both carry the semester, the location and contact, the QR code, a tutor legend, the
+dark mode. The print stylesheet sets a zero `@page` margin and insets the handout itself, which
+is what keeps Chrome and Edge from stamping the document title across the top of the page and
+the page URL across the bottom — there is no CSS switch for those, only the margin they are
+drawn into. Both carry the semester, the location and contact, the QR code, a tutor legend, the
 important notes, and a plain-text listing of every shift.
 
 ### What goes on the handout
@@ -302,16 +324,17 @@ is not counted against you.
 
 ### Accessibility notes
 
-- Tutor colors come from the Okabe-Ito colorblind-safe palette, and every block prints the
+- Tutor colors are chosen with red-green colorblindness counted in, and every block prints the
   name, times and subjects as text — the schedule is fully readable in grayscale, and nothing
   depends on color alone.
-- Beyond eight tutors, colors repeat with a diagonal hatch so the repeated pair stays distinct.
+- Fifteen colors, so a normal roster never repeats one. Past fifteen tutors a color has to come
+  round again, and the repeat carries a diagonal hatch so the pair stays distinct.
 - The whole app is keyboard operable. In the availability painter, move with the arrow keys and
   toggle with Space. On a scheduled block, arrow keys move it, Shift+arrows resize it, `L`
   locks it and Delete removes it; Tab from the block reaches its padlock. Placing a shift
   without a mouse is what **Add shift** above the grid is for.
 - Text contrast is checked automatically in CI, in both light and dark themes, for every color
-  in the palette.
+  in the palette and for the hatched repeats past the end of it.
 
 ## Colors
 
@@ -323,9 +346,37 @@ accent only — it is too light for body text on white, so text that needs to be
 All four are defined once at the top of `assets/css/app.css`. If Marketing supplies different
 values, change them there and nothing else.
 
-Tutor block colors are deliberately *not* brand colors. Eight hues that are both on-brand and
-distinguishable to a red-green colorblind reader do not exist — a navy/royal/sky family
-collapses into near-identical grays. The chrome is brand; the data is colorblind-safe.
+Tutor block colors are deliberately *not* brand colors. A set of hues that is both on-brand and
+distinguishable to a red-green colorblind reader does not exist — a navy/royal/sky family
+collapses into near-identical grays. The chrome is brand; the data is legible.
+
+The palette is fifteen fixed colors. The first eight are Okabe-Ito's colorblind-safe set, which
+is what the schedule always used. Seven more were added because eight was a ceiling: a ninth
+tutor was handed the first color back, which is how two blues ended up side by side.
+
+The seven were chosen against the same measure the assignment uses — CIE L\*a\*b\* distance
+between the drawn blocks, taken as the worst of normal, protan and deutan vision, so a red and
+a green count as close because to some readers they are the same color. The bar was the
+original eight: the three closest pairs in the list are still Okabe-Ito's own, so nothing added
+here made the palette harder to read.
+
+### Which tutor gets which
+
+Not roster order. Colors are assigned when the schedule is built, from where people actually
+land in the week: two tutors whose blocks touch — including a Monday block beside a Tuesday one
+at the same hour, which reads as adjacent on the printed page — are pushed to opposite ends of
+the palette, and the closest pair of colors is spent on two tutors nobody sees together. The
+cost is convex, so the solver will take several mildly similar pairs to avoid one pair that
+reads alike.
+
+On the sample week that moves the closest adjacent pair from ΔE 1.4 — Okabe-Ito's green against
+its gray, which a deuteranope cannot separate at all — to ΔE 10.2.
+
+Auto-optimize re-picks every color. Fitting a single tutor re-picks only theirs, so the rest of
+the schedule stays where it was.
+
+Classes have their own scheme on the coverage page, taken from the far end of the same fifteen
+so that page does not read as a recolored copy of the one before it.
 
 ## Development
 
@@ -352,9 +403,12 @@ node tools/test-optimizer.mjs     # needs Node 20+
 
 Or open `tools/selftest.html` in a browser, which needs nothing installed. Both run the same
 assertions against the same source files: the display-name rules, contrast in both themes for
-every palette slot, CSV round-tripping and parsing, the class list and the bitmask it drives,
+every color of every palette size, that a generated palette keeps its closest pair apart for a
+colorblind reader too and that the assignment does not waste that pair on two tutors sitting
+side by side, CSV round-tripping and parsing, the class list and the bitmask it drives,
 embedded classes and open labs staying out of coverage while still spending a tutor's hours,
-touching shifts joining into one, the ten-tutor fixture with the budget both on and off, locked
+touching shifts joining into one, class coverage turning a tutor's shift into one run per class
+they teach, the ten-tutor fixture with the budget both on and off, locked
 shifts surviving re-optimization, back-to-back shifts coming out as one block, fitting a single
 tutor without moving anyone else, and a randomized fuzz pass that asserts no generated schedule
 ever breaks a hard rule.

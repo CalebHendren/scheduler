@@ -142,12 +142,32 @@
     return order;
   }
 
-  // Okabe-Ito colorblind-safe hues. Brand-adjacent blue and vermillion lead so a
-  // typical roster reads as one family with the navy/royal chrome.
+  /* ---- the tutor palette ----
+   * The eight Okabe-Ito colorblind-safe hues lead, because a roster that fits
+   * inside them is readable to a red-green colorblind eye without anything
+   * else having to work. The seven after them widen the list far enough that a
+   * normal roster never has to repeat one -- the old eight meant a ninth tutor
+   * was handed blue again, which is what put two blues side by side.
+   *
+   * The seven were picked against the same measure the solver below uses, with
+   * the bar set at the original eight: the three closest pairs in the list are
+   * still Okabe-Ito's own, so nothing added here made the palette harder to
+   * read. Which tutor gets which is not this list's order, though --
+   * assignColors picks from the finished schedule.
+   */
   var PALETTE = [
     '#0072B2', '#D55E00', '#009E73', '#E69F00',
-    '#56B4E9', '#CC79A7', '#999933', '#6E6E6E'
+    '#56B4E9', '#CC79A7', '#999933', '#6E6E6E',
+    '#2222B9', '#B92222', '#B9228C', '#27D37D',
+    '#9C5821', '#8B5CF6', '#1DDDD4'
   ];
+
+  /* Classes are coloured from the far end of the same list. They are a
+   * different scheme on a different page, and starting where the tutors leave
+   * off is what stops the coverage page looking like a recoloured copy of the
+   * one before it.
+   */
+  var SUBJECT_OFFSET = 8;
 
   // The day is modelled 7:00 AM to 8:30 PM because someone may be available
   // then, but a schedule is drawn over the hours actually in play, never
@@ -326,6 +346,75 @@
     return out;
   }
 
+  /* ---- coverage by class ----
+   * The schedule is written tutor by tutor, but the question a student arrives
+   * with is the other way round: when can I get help with Micro? These turn one
+   * into the other.
+   *
+   * A class is covered for as long as someone who teaches it is on shift at the
+   * center, so one tutor signed up for three classes covers all three at once,
+   * and comes out as three separate runs -- which is the point. Shifts held
+   * somewhere else are somebody's hours but not the center's cover, and are
+   * left out here exactly as they are left out of the grid.
+   */
+  function subjectRuns(assignments, tutors) {
+    var masks = {}, runs = [];
+    (tutors || []).forEach(function (t) { masks[t.id] = subjectMask(t.subjects); });
+
+    var shifts = mainShifts(assignments).filter(function (a) { return masks[a.tutorId]; });
+
+    for (var subject = 0; subject < SUBJECTS.length; subject++) {
+      var bit = SUBJECTS[subject].bit;
+      var teaching = shifts.filter(function (a) { return masks[a.tutorId] & bit; });
+      if (!teaching.length) continue;
+
+      for (var day = 0; day < DAYS; day++) {
+        var today = teaching.filter(function (a) { return a.day === day; });
+        if (!today.length) continue;
+
+        // Who is on for this class in each half hour; a run is a stretch with
+        // somebody in it, however many people come and go inside it.
+        var who = [];
+        for (var slot = 0; slot < SLOTS_PER_DAY; slot++) who.push(null);
+        today.forEach(function (a) {
+          for (var slot = a.startSlot; slot < a.endSlot; slot++) {
+            if (!who[slot]) who[slot] = [];
+            if (who[slot].indexOf(a.tutorId) === -1) who[slot].push(a.tutorId);
+          }
+        });
+
+        var open = null;
+        for (var s = 0; s <= SLOTS_PER_DAY; s++) {
+          var covered = s < SLOTS_PER_DAY && who[s];
+          if (covered && !open) open = { start: s, tutorIds: [] };
+          if (covered) {
+            who[s].forEach(function (id) {
+              if (open.tutorIds.indexOf(id) === -1) open.tutorIds.push(id);
+            });
+          } else if (open) {
+            runs.push({
+              subject: subject, subjectKey: SUBJECTS[subject].key,
+              day: day, startSlot: open.start, endSlot: s, tutorIds: open.tutorIds
+            });
+            open = null;
+          }
+        }
+      }
+    }
+    return runs;
+  }
+
+  // Half hours a week each class is covered for, indexed the same as SUBJECTS,
+  // which is what lets the coverage page say how much of each is on offer.
+  function subjectSlotTotals(runs) {
+    var totals = [];
+    for (var i = 0; i < SUBJECTS.length; i++) totals.push(0);
+    (runs || []).forEach(function (run) {
+      totals[run.subject] += run.endSlot - run.startSlot;
+    });
+    return totals;
+  }
+
   /* ---- color math, shared by the app and the CI contrast test ---- */
 
   function hexToRgb(hex) {
@@ -369,10 +458,13 @@
   var INK_LIGHT = '#14181F';
   var INK_DARK = '#EEF3F9';
 
+  // How much white a block fill is cut with: enough hue to tell two blocks
+  // apart, pale enough to read black text over.
+  var BLOCK_TINT = 0.86;
+
   // Block colors are derived rather than hand-picked, so the contrast test
-  // covers every slot in the palette instead of a curated subset.
-  function blockColors(colorIndex, dark) {
-    var hue = PALETTE[colorIndex % PALETTE.length];
+  // covers every color of every ring instead of a curated subset.
+  function shadeBlock(hue, dark) {
     if (dark) {
       return {
         hue: hue,
@@ -384,12 +476,294 @@
     return {
       hue: hue,
       bar: hue,
-      bg: mix(hue, SURFACE_LIGHT, 0.86),
+      bg: mix(hue, SURFACE_LIGHT, BLOCK_TINT),
       ink: INK_LIGHT
     };
   }
 
+  function blockColors(colorIndex, dark) {
+    return shadeBlock(PALETTE[colorIndex % PALETTE.length], dark);
+  }
+
+  function subjectColors(subjectIndex, dark) {
+    return shadeBlock(PALETTE[(SUBJECT_OFFSET + subjectIndex) % PALETTE.length], dark);
+  }
+
+  // Past the end of the list a color has to come round again, and the repeat is
+  // drawn with a diagonal hatch so the pair stays distinct anyway.
   function usesHatch(colorIndex) { return colorIndex >= PALETTE.length; }
+
+  /* ---- how different two colors look ---- */
+
+  // CIE L*a*b* under D65. Hex arithmetic answers "are these the same bytes";
+  // Lab answers the question the schedule actually asks, which is whether two
+  // blocks look alike to someone glancing at the page.
+  function hexToLab(hex) {
+    var lin = hexToRgb(hex).map(function (v) {
+      var c = v / 255;
+      return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    var f = [
+      (0.4124 * lin[0] + 0.3576 * lin[1] + 0.1805 * lin[2]) / 0.95047,
+      (0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]),
+      (0.0193 * lin[0] + 0.1192 * lin[1] + 0.9505 * lin[2]) / 1.08883
+    ].map(function (t) {
+      return t > 0.008856 ? Math.pow(t, 1 / 3) : (7.787 * t) + 16 / 116;
+    });
+    return [116 * f[1] - 16, 500 * (f[0] - f[1]), 200 * (f[1] - f[2])];
+  }
+
+  function deltaE(a, b) {
+    var la = hexToLab(a), lb = hexToLab(b);
+    var dl = la[0] - lb[0], da = la[1] - lb[1], db = la[2] - lb[2];
+    return Math.sqrt(dl * dl + da * da + db * db);
+  }
+
+  /* Building a ring asks the same handful of questions about the same few
+   * hundred colors over and over, so the conversions are kept rather than
+   * redone. Pure functions of the hex, so the cache never goes stale.
+   */
+  var labCache = {};
+  function labOf(hex, vision) {
+    var key = vision + hex;
+    if (labCache[key] === undefined) {
+      labCache[key] = hexToLab(vision === 'normal' ? hex : simulateCvd(hex, vision));
+    }
+    return labCache[key];
+  }
+
+  function labGap(a, b) {
+    var dl = a[0] - b[0], da = a[1] - b[1], db = a[2] - b[2];
+    return Math.sqrt(dl * dl + da * da + db * db);
+  }
+
+  // Two palette slots compared the way they are drawn: the tint is most of the
+  // block, the identity bar the rest, so the tint counts double. Slots past the
+  // palette wrap onto the same hues, which is exactly what the caller needs to
+  // know -- slot 0 and slot 11 are the same blue.
+  /* Vienot, Brettel & Mollon (1999): drop the color onto the plane a dichromat
+   * still has, and what comes back is what that reader sees. Red-green is the
+   * common case and the one that matters here -- an evenly spaced ring of hues
+   * always contains a red and a green that a deuteranope reads as one color.
+   */
+  function simulateCvd(hex, kind) {
+    var rgb = hexToRgb(hex);
+    var l = 17.8824 * rgb[0] + 43.5161 * rgb[1] + 4.11935 * rgb[2];
+    var m = 3.45565 * rgb[0] + 27.1554 * rgb[1] + 3.86714 * rgb[2];
+    var s = 0.0299566 * rgb[0] + 0.184309 * rgb[1] + 1.46709 * rgb[2];
+    if (kind === 'protan') l = 2.02344 * m - 2.52581 * s;
+    else m = 0.494207 * l + 1.24827 * s;
+    return rgbToHex([
+      0.080944479 * l - 0.130504409 * m + 0.116772127 * s,
+      -0.0102485335 * l + 0.0540193266 * m - 0.113614708 * s,
+      -0.0003652968 * l - 0.0041216156 * m + 0.693512259 * s
+    ]);
+  }
+
+  // The worst case across readers, which is the smallest of the three gaps: two
+  // colors are only as distinct as the eye that can least tell them apart.
+  function colorGap(a, b) {
+    return Math.min(
+      labGap(labOf(a, 'normal'), labOf(b, 'normal')),
+      labGap(labOf(a, 'protan'), labOf(b, 'protan')),
+      labGap(labOf(a, 'deutan'), labOf(b, 'deutan'))
+    );
+  }
+
+  /* How far apart two colors land once they are drawn as blocks: the fill is
+   * most of what the eye gets and counts double, the identity bar is the rest.
+   * The light theme is the one that prints, so it is the one measured.
+   */
+  function blockGap(hueA, hueB) {
+    return (2 * colorGap(mix(hueA, SURFACE_LIGHT, BLOCK_TINT), mix(hueB, SURFACE_LIGHT, BLOCK_TINT)) +
+      colorGap(hueA, hueB)) / 3;
+  }
+
+  // The palette is fixed, so every number below it is too: worked out once.
+  var slotGapCache = {};
+  var widestSlotGap = 0;
+
+  function slotDistance(a, b) {
+    var ia = a % PALETTE.length, ib = b % PALETTE.length;
+    if (ia === ib) return 0;
+    var key = Math.min(ia, ib) + ':' + Math.max(ia, ib);
+    if (slotGapCache[key] === undefined) {
+      slotGapCache[key] = blockGap(PALETTE[ia], PALETTE[ib]);
+    }
+    return slotGapCache[key];
+  }
+
+  function slotSpread() {
+    if (!widestSlotGap) {
+      for (var a = 0; a < PALETTE.length; a++) {
+        for (var b = a + 1; b < PALETTE.length; b++) {
+          widestSlotGap = Math.max(widestSlotGap, slotDistance(a, b));
+        }
+      }
+    }
+    return widestSlotGap;
+  }
+
+  // 1 when two slots are indistinguishable, near 0 when nothing about them is
+  // shared. Cubed so a merely different-ish pair costs almost nothing and only
+  // the genuinely confusable pairs -- the two blues, the two purples -- push
+  // the solver around.
+  function slotClash(a, b) {
+    var clash = Math.pow(Math.max(0, 1 - slotDistance(a, b) / slotSpread()), 3);
+    // A repeated color is drawn with a diagonal hatch, which carries most of the
+    // distinction by itself.
+    if (usesHatch(a) !== usesHatch(b)) clash *= 0.45;
+    return clash;
+  }
+
+  /* ---- dynamic color assignment ---- */
+
+  // Shifts on the same day share a column; a day apart puts them side by side.
+  // Both read as "next to each other" on the printed page, so both constrain
+  // what colors the two tutors can wear.
+  var DAY_FALLOFF = [1, 0.8, 0.35, 0.15, 0.1];
+  var NEAR_SLOTS = 6;       // three hours: still one glance
+  var LEGEND_WEIGHT = 0.06; // in the legend every tutor is beside every other
+  var TAKEN_COST = 1e6;     // a slot already spoken for is never the answer
+  var CLASH_POWER = 3;      // see seatCost: one bad pair costs more than many mild ones
+
+  function shiftProximity(a, b) {
+    var dayWeight = DAY_FALLOFF[Math.min(Math.abs(a.day - b.day), DAY_FALLOFF.length - 1)];
+    var gap = Math.max(a.startSlot, b.startSlot) - Math.min(a.endSlot, b.endSlot);
+    if (gap >= NEAR_SLOTS) return 0;
+    return dayWeight * (gap <= 0 ? 1 : 1 - gap / NEAR_SLOTS);
+  }
+
+  // How close a pair of tutors ever comes to each other, as a weight from the
+  // legend floor up to 1. Repeated near misses accumulate, without any one pair
+  // ever outweighing the rest of the week.
+  function proximityMatrix(tutors, assignments) {
+    var seat = {}, n = tutors.length, w = [], i, j;
+    for (i = 0; i < n; i++) {
+      seat[tutors[i].id] = i;
+      w.push([]);
+      for (j = 0; j < n; j++) w[i].push(i === j ? 0 : LEGEND_WEIGHT);
+    }
+    var shifts = (assignments || []).filter(function (a) {
+      return seat[a.tutorId] !== undefined;
+    });
+    for (i = 0; i < shifts.length; i++) {
+      for (j = i + 1; j < shifts.length; j++) {
+        var ia = seat[shifts[i].tutorId], ib = seat[shifts[j].tutorId];
+        if (ia === ib) continue;
+        var near = shiftProximity(shifts[i], shifts[j]);
+        if (near <= 0) continue;
+        w[ia][ib] = w[ib][ia] = 1 - (1 - w[ia][ib]) * (1 - near);
+      }
+    }
+    return w;
+  }
+
+  /*
+   * What it costs tutor `i` to wear `slot`, given who already holds what.
+   * `skip` leaves one tutor out, which is what makes pricing a swap cheap.
+   *
+   * Raised to a power rather than summed flat: a handful of mildly similar
+   * pairs is a schedule nobody complains about, and one pair of blocks that
+   * read as the same color is the whole complaint. Convex cost means the
+   * solver will happily take the first to avoid the second.
+   *
+   * `tier` prices the wrap. Every clash term is under 1 and there are fewer
+   * than `tier` of them, so charging a whole tier for each round past the
+   * first means no repeated color is taken while an unused one is free. Two
+   * tutors trading slots keep the rounds between them, so the tier cancels out
+   * of a swap and never blocks one.
+   */
+  function seatCost(i, slot, chosen, w, skip, tier) {
+    var sum = tier * Math.floor(slot / PALETTE.length);
+    for (var k = 0; k < chosen.length; k++) {
+      if (k === i || k === skip || chosen[k] < 0) continue;
+      sum += chosen[k] === slot ? TAKEN_COST
+        : Math.pow(w[i][k] * slotClash(slot, chosen[k]), CLASH_POWER);
+    }
+    return sum;
+  }
+
+  function cheapestSeat(i, chosen, slots, w, tier) {
+    var best = slots[0], bestCost = Infinity;
+    for (var s = 0; s < slots.length; s++) {
+      var cost = seatCost(i, slots[s], chosen, w, -1, tier);
+      if (cost < bestCost) { bestCost = cost; best = slots[s]; }
+    }
+    return best;
+  }
+
+  /*
+   * Picks a color for every tutor from where they land in the week rather than
+   * from the order they were typed in, so two tutors whose blocks sit next to
+   * each other never come out the same blue. `options.only` re-seats just those
+   * tutors and leaves everyone else's color where it is.
+   *
+   * Returns a map of tutor id to color index. Deterministic: the same roster
+   * and the same schedule always produce the same colors.
+   */
+  function assignColors(tutors, assignments, options) {
+    var opts = options || {};
+    var list = (tutors || []).filter(Boolean);
+    var n = list.length, out = {}, i;
+    if (!n) return out;
+
+    var w = proximityMatrix(list, assignments);
+    var load = w.map(function (row) {
+      return row.reduce(function (sum, v) { return sum + v; }, 0);
+    });
+
+    var chosen = [], loose = [], span = n;
+    for (i = 0; i < n; i++) {
+      var held = opts.only && opts.only.indexOf(list[i].id) === -1;
+      var keeping = held && typeof list[i].colorIndex === 'number';
+      chosen.push(keeping ? list[i].colorIndex : -1);
+      if (keeping) span = Math.max(span, list[i].colorIndex + 1);
+      if (!held) loose.push(i);
+    }
+
+    // The whole palette, plus a hatched round for every wrap this roster
+    // forces, so there is always a free slot and no two tutors ever share one.
+    // `span` also covers a color a held tutor is already wearing.
+    var rounds = Math.max(1, Math.ceil(span / PALETTE.length));
+    var slots = [];
+    for (i = 0; i < rounds * PALETTE.length; i++) slots.push(i);
+
+    // Hardest first: a tutor who is next to everyone has the fewest good
+    // options left if they are colored last.
+    loose.sort(function (a, b) {
+      return load[b] - load[a] || (list[a].id < list[b].id ? -1 : 1);
+    });
+    loose.forEach(function (t) { chosen[t] = cheapestSeat(t, chosen, slots, w, n); });
+
+    // Greedy settles the hard cases but can strand an easy one, and once every
+    // slot is spoken for the only move left is trading two of them.
+    for (var pass = 0; pass < 12; pass++) {
+      var improved = false;
+      for (var a = 0; a < loose.length; a++) {
+        var x = loose[a];
+        for (var b = a + 1; b < loose.length; b++) {
+          var y = loose[b];
+          var before = seatCost(x, chosen[x], chosen, w, y, n) + seatCost(y, chosen[y], chosen, w, x, n);
+          var after = seatCost(x, chosen[y], chosen, w, y, n) + seatCost(y, chosen[x], chosen, w, x, n);
+          if (after < before - 1e-9) {
+            var swap = chosen[x]; chosen[x] = chosen[y]; chosen[y] = swap;
+            improved = true;
+          }
+        }
+        var moved = cheapestSeat(x, chosen, slots, w, n);
+        if (moved !== chosen[x] &&
+            seatCost(x, moved, chosen, w, -1, n) < seatCost(x, chosen[x], chosen, w, -1, n) - 1e-9) {
+          chosen[x] = moved;
+          improved = true;
+        }
+      }
+      if (!improved) break;
+    }
+
+    for (i = 0; i < n; i++) out[list[i].id] = chosen[i];
+    return out;
+  }
 
   function uid(prefix) {
     return (prefix || 'id') + '-' +
@@ -426,6 +800,8 @@
     roomLabel: roomLabel,
     daysLabel: daysLabel,
     groupOffRoom: groupOffRoom,
+    subjectRuns: subjectRuns,
+    subjectSlotTotals: subjectSlotTotals,
     PALETTE: PALETTE,
     SURFACE_LIGHT: SURFACE_LIGHT,
     SURFACE_DARK: SURFACE_DARK,
@@ -451,7 +827,15 @@
     relativeLuminance: relativeLuminance,
     contrastRatio: contrastRatio,
     blockColors: blockColors,
+    subjectColors: subjectColors,
     usesHatch: usesHatch,
+    deltaE: deltaE,
+    colorGap: colorGap,
+    blockGap: blockGap,
+    slotClash: slotClash,
+    shiftProximity: shiftProximity,
+    proximityMatrix: proximityMatrix,
+    assignColors: assignColors,
     uid: uid
   };
 })(typeof window !== 'undefined' ? window : globalThis);

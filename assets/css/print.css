@@ -3,9 +3,14 @@
    PDF Chrome and Edge produce is tagged, selectable and screen-reader
    navigable rather than a picture of a calendar. */
 
+/* Zero, deliberately. Chrome and Edge draw their own header and footer -- the
+   document title at the top, the page URL at the bottom -- inside whatever the
+   @page margin leaves them, and there is no CSS switch to turn that off. Give
+   them no margin to draw into and the handout comes out clean; the page inset
+   comes back below as padding on the print root. */
 @page {
   size: letter landscape;
-  margin: 0.4in;
+  margin: 0;
 }
 
 .app-header,
@@ -14,7 +19,10 @@
 #dialog-root,
 .skip-link { display: none !important; }
 
-.print-only { display: block !important; }
+.print-only {
+  display: block !important;
+  padding: 0.4in;
+}
 
 html, body {
   background: #fff !important;
@@ -159,11 +167,40 @@ html, body {
 .pv-swatch { display: inline-block; width: 16px; height: 10px; border: 1px solid #6B7789; }
 .pv-legend__subjects { color: #3A4553; font-weight: 700; font-size: 7pt; }
 
+/* ---- coverage by class -------------------------------------------------
+   The same week read the other way round, on its own page: one lane per class
+   rather than per tutor, so a student can find their class rather than having
+   to know which tutor teaches it. */
+
+.pv-subjects {
+  /* The page inset above is the print root's padding, which lands once at the
+     top of page one; this section opens a page of its own and needs its own. */
+  padding-top: 0.4in;
+  page-break-before: always;
+}
+.pv-subjects > h2 {
+  font-family: Georgia, serif; font-size: 13pt; color: #002855; margin: 0 0 2px;
+}
+.pv-subjects__lede {
+  margin: 0 0 6px; font-size: 8.5pt; color: #3A4553; max-width: 6.5in;
+}
+/* A class block carries a short code rather than a name, so the tutors under
+   it are what the width is actually spent on. */
+.pv-block__who { display: block; font-size: 6.5pt; line-height: 1.15; }
+
+.pv-legend--subjects {
+  margin-top: 6px; padding-top: 4px; border-top: 1px solid #B9C3D1;
+  page-break-inside: avoid;
+}
+
 /* ---- text listing ------------------------------------------------------ */
 
 /* The listing is a narrow list on a landscape page, so it runs in two columns
    -- one page of the week rather than one and a half. */
 .pv-listing {
+  /* The page inset above is the print root's padding, which lands once at the
+     top of page one; the listing opens page two and needs its own. */
+  padding-top: 0.4in;
   page-break-before: always;
   font-size: 9pt;
   column-count: 2;
