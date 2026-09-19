@@ -78,12 +78,14 @@ html, body {
 }
 .pv-time-head { width: 52px; }
 .pv-time {
-  width: 52px; text-align: right; padding-right: 4px;
-  font-size: 7.5pt; color: #3A4553; font-weight: 600;
+  width: 52px; text-align: right; padding: 0 4px 0 0;
+  font-size: 7.5pt; line-height: 12px; color: #3A4553; font-weight: 600;
   white-space: nowrap;
   vertical-align: top;
 }
-.pv-table tbody tr { height: 13px; }
+/* A fixed height, not a minimum: the class page works out what fits in a
+   block from it (ROW_PX in printview.js). */
+.pv-table tbody tr { height: 14px; }
 .pv-empty { border-bottom: 1px solid #EDF1F6; border-right: 1px solid #DCE3EC; }
 .pv-table tbody tr.pv-hour .pv-empty,
 .pv-table tbody tr.pv-hour .pv-time { border-top: 1px solid #B9C3D1; }
@@ -181,6 +183,22 @@ html, body {
 /* A class block carries a short code rather than a name, so the tutors under
    it are what the width is actually spent on. */
 .pv-block__who { display: block; font-size: 6.5pt; line-height: 1.15; }
+/* Where the tutors change inside a class block: a faint rule at that hour, and
+   the new stretch's hours and names under it. */
+/* Exactly as tall as the rows the block spans (set in printview.js), so its
+   text can never stretch them: the grid stays to scale. */
+.pv-run { position: relative; overflow: hidden; }
+.pv-nowrap { white-space: nowrap; }
+/* A stretch is boxed to its own hours. printview.js has already worked out
+   how many whole lines of names fit alongside the class code and the time,
+   and the names are clamped to that. */
+.pv-seg { position: absolute; left: 0; right: 0; overflow: hidden; }
+.pv-seg > .pv-block__who {
+  display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
+  line-height: 10px;
+}
+.pv-seg > .pv-block__time { line-height: 10px; }
+.pv-seg--after { border-top: 1px solid rgba(20, 24, 31, .22); padding-top: 1px; }
 
 /* ---- text listing ------------------------------------------------------ */
 

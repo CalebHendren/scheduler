@@ -57,7 +57,7 @@
    * (OMN 286)".
    */
   function offRoomRuns(state, labels) {
-    var groups = U.groupOffRoom(state.assignments);
+    var groups = U.groupOffRoom(state.assignments, labels);
     return U.SHIFT_KINDS.map(function (kind) {
       if (kind.key === 'main') return null;
       var text = groups.filter(function (g) { return g.kind === kind.key; })
@@ -179,7 +179,7 @@
         if (bh > 20) {
           pdf.setFont('helvetica', 'normal');
           pdf.setFontSize(6);
-          pdf.text(truncate(pdf, U.formatRange(a.startSlot, a.endSlot), textW), textX, by + 16);
+          pdf.text(fitRange(pdf, a.startSlot, a.endSlot, textW), textX, by + 16);
         }
         if (bh > 28) {
           var shorts = U.maskToShort(U.subjectMask(tutor.subjects)).join(' · ') || '—';
@@ -237,36 +237,89 @@
         pdf.setFontSize(7.5);
         pdf.text(truncate(pdf, run.label, textW), textX, by + 8);
 
-        if (bh > 20) {
-          pdf.setFont('helvetica', 'normal');
-          pdf.setFontSize(6);
-          pdf.text(fitRange(pdf, run.startSlot, run.endSlot, textW), textX, by + 16);
-        }
-        if (bh > 28) {
-          var who = run.tutorIds.map(function (id) {
-            var tutor = TS.store.getTutor(id);
-            return tutor ? labels[tutor.id] : '';
-          }).filter(function (name) { return !!name; }).sort();
-
-          pdf.setFont('helvetica', 'normal');
-          pdf.setFontSize(6);
-          var lines = pdf.splitTextToSize(who.join(', ') || 'unstaffed', textW);
-          var room = Math.floor((bh - 20) / 7);
-          lines.slice(0, Math.max(0, room)).forEach(function (line, i) {
-            pdf.text(line, textX, by + 24 + i * 7);
-          });
-        }
+        // The first stretch starts under the class code; the rest under
+        // their rule.
+        var place = function (seg, i) {
+          var segTop = g.bodyTop + (seg.startSlot - g.win.start) * g.rowH + 0.5;
+          return {
+            rule: segTop,
+            top: i === 0 ? by + 16 : segTop + 7,
+            bottom: g.bodyTop + (seg.endSlot - g.win.start) * g.rowH - 0.5
+          };
+        };
+        var merged = U.mergeCrampedSegments(run.segments, function (seg, i) {
+          var at = place(seg, i);
+          return segmentLines(pdf, seg, labels, textW, at.top, at.bottom).fits;
+        });
+        merged.forEach(function (seg, i) {
+          var at = place(seg, i);
+          if (i > 0) {
+            pdf.setDrawColor(150, 158, 170);
+            pdf.setLineWidth(0.3);
+            pdf.line(bx + 3.5, at.rule, bx + bw, at.rule);
+          }
+          drawSegmentText(pdf, seg, labels, textX, at.top, textW, at.bottom);
+        });
       });
     }
   }
 
+  /* One stretch of a class block with the same tutors in it: who, then its
+   * hours, both in the block's plain small type. The page is about the class,
+   * so the time claims its lines first -- whole, broken after the dash
+   * ("9:00 AM-" over "4:00 PM") when there is room for that, or shortened to
+   * one line -- and the names wrap into whatever is left above it, cut with
+   * an ellipsis or left out when there is nothing left.
+   */
+  var SEG_LINE = 7;
+
+  // What a stretch would print, and whether every name in it fits.
+  function segmentLines(pdf, seg, labels, width, top, bottom) {
+    var room = Math.max(0, Math.floor((bottom - top + SEG_LINE - 1) / SEG_LINE));
+    var who = U.sortedNames(seg.tutorIds.map(function (id) {
+      var tutor = TS.store.getTutor(id);
+      return tutor ? labels[tutor.id] : '';
+    }));
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(6);
+
+    var range = U.formatRange(seg.startSlot, seg.endSlot);
+    var dash = range.indexOf('–');
+    var timeLines = !room ? []
+      : pdf.getTextWidth(range) <= width ? [range]
+      : room >= 3 && dash !== -1
+        ? [truncate(pdf, range.slice(0, dash + 1), width), truncate(pdf, range.slice(dash + 1), width)]
+        : [fitRange(pdf, seg.startSlot, seg.endSlot, width)];
+
+    var nameRoom = room - timeLines.length;
+    var names = pdf.splitTextToSize(who.join(', ') || 'unstaffed', width);
+    var fits = names.length <= nameRoom;
+    if (!fits) {
+      names = names.slice(0, Math.max(0, nameRoom));
+      if (nameRoom > 0) names[nameRoom - 1] = truncate(pdf, names[nameRoom - 1] + '…', width);
+    }
+    return { lines: names.concat(timeLines), fits: fits };
+  }
+
+  function drawSegmentText(pdf, seg, labels, x, top, width, bottom) {
+    var lines = segmentLines(pdf, seg, labels, width, top, bottom).lines;
+    pdf.setTextColor(INK[0], INK[1], INK[2]);
+    lines.forEach(function (line, i) {
+      pdf.text(line, x, top + i * SEG_LINE);
+    });
+  }
+
   /* The times are the first thing to go when a lane is narrow, but an ellipsis
-   * says less than a shorter truth: the range gives way to the start time, and
-   * the start time to its bare clock reading, before anything is cut.
+   * says less than a shorter truth: the range gives way to its spoken form,
+   * "9-12", then to the start time, and that to its bare clock reading, before
+   * anything is cut.
    */
   function fitRange(pdf, startSlot, endSlot, width) {
     var full = U.formatRange(startSlot, endSlot);
     if (pdf.getTextWidth(full) <= width) return full;
+    var compact = U.formatRangeCompact(startSlot, endSlot);
+    if (pdf.getTextWidth(compact) <= width) return compact;
     var from = U.formatMinutes(U.slotStartMinutes(startSlot));
     if (pdf.getTextWidth(from) <= width) return from;
     return truncate(pdf, U.formatMinutes(U.slotStartMinutes(startSlot), { omitSuffix: true }), width);
@@ -492,7 +545,9 @@
     var noteLines = s.notes
       ? pdf.splitTextToSize(s.notes, pageW - margin * 2 - 12)
       : [];
-    var noteH = noteLines.length ? 16 + noteLines.length * 9 : 0;
+    // The box is this less the 8 points kept clear above the footer rule, and
+    // still clears the last line's descenders.
+    var noteH = noteLines.length ? 24 + noteLines.length * 9 : 0;
 
     // The label column is as wide as the widest kind name, so the entries of
     // both runs line up whatever the kinds are called.
@@ -564,9 +619,9 @@
       pdf.setFillColor(252, 250, 247);
       pdf.setDrawColor(NAVY[0], NAVY[1], NAVY[2]);
       pdf.setLineWidth(0.5);
-      pdf.rect(margin, noteTop, pageW - margin * 2, noteH - 6, 'FD');
+      pdf.rect(margin, noteTop, pageW - margin * 2, noteH - 8, 'FD');
       pdf.setFillColor(ORANGE[0], ORANGE[1], ORANGE[2]);
-      pdf.rect(margin, noteTop, 3, noteH - 6, 'F');
+      pdf.rect(margin, noteTop, 3, noteH - 8, 'F');
 
       pdf.setFont('times', 'bold');
       pdf.setFontSize(9.5);

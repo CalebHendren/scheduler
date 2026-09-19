@@ -37,7 +37,7 @@
     var state = TS.store.emptyState();
     state.tutors = TS.store.sampleTutors().map(function (t, i) {
       t.colorIndex = i;
-      t.maxHoursPerWeek = 15;
+      t.maxHoursPerWeek = state.settings.defaultMaxHours;
       return TS.store.normalizeTutor(t);
     });
     state.tutors.forEach(function (t, i) { t.id = 'tutor-' + i; });
@@ -391,7 +391,54 @@
     r.eq(bioRun.length, 1, 'back-to-back shifts on one class are a single run');
     r.eq(bioRun[0].startSlot + '-' + bioRun[0].endSlot, '4-12', 'running the length of both');
     r.eq(bioRun[0].tutorIds.slice().sort().join(','), 'all,bio', 'naming everyone in it');
+    r.eq(bioRun[0].segments.map(function (seg) {
+      return seg.startSlot + '-' + seg.endSlot + ' ' + seg.tutorIds.join(',');
+    }).join(' | '), '4-8 all | 8-12 bio', 'with a segment for each change of tutor inside it');
     r.eq(laneOf(joined, 'MICRO')[0].endSlot, 8, 'a class only one of them teaches stops with them');
+
+    // "Chance, Olivia 9-12, Olivia 12-2, Emma, Olivia 3-5": the class stays one
+    // block while it is covered, who is in changes the segment, and a segment
+    // with two names lists them alphabetically, whoever was entered first.
+    var crew = [
+      TS.store.normalizeTutor({ id: 'o', firstName: 'Olivia', subjects: { bio: true } }),
+      TS.store.normalizeTutor({ id: 'c', firstName: 'Chance', subjects: { bio: true } }),
+      TS.store.normalizeTutor({ id: 'e', firstName: 'Emma', subjects: { bio: true } })
+    ];
+    var day = U.coverageRuns([
+      shift('o', 0, 4, 14), shift('c', 0, 4, 10), shift('o', 0, 16, 20), shift('e', 0, 16, 20)
+    ], crew);
+    var names = function (seg) {
+      return seg.tutorIds.map(function (id) {
+        return crew.filter(function (t) { return t.id === id; })[0].firstName;
+      }).join(', ');
+    };
+    r.eq(day.map(function (run) { return U.formatRange(run.startSlot, run.endSlot); }).join(' / '),
+      '9:00 AM–2:00 PM / 3:00–5:00 PM', 'the class is one block for as long as it is covered');
+    r.eq(day[0].segments.concat(day[1].segments).map(function (seg) {
+      return names(seg) + ' ' + U.formatRange(seg.startSlot, seg.endSlot);
+    }).join(' / '), 'Chance, Olivia 9:00 AM–12:00 PM / Olivia 12:00–2:00 PM / Emma, Olivia 3:00–5:00 PM',
+    'and splits into segments wherever who is in changes, names in alphabetical order');
+    // A stretch too short for its names folds into the one after it.
+    var cramped = U.mergeCrampedSegments([
+      { startSlot: 14, endSlot: 16, tutorIds: ['p'] },
+      { startSlot: 16, endSlot: 24, tutorIds: ['p', 's'] },
+      { startSlot: 24, endSlot: 25, tutorIds: ['s'] }
+    ], function (seg) { return seg.endSlot - seg.startSlot >= 4; });
+    r.eq(cramped.map(function (seg) {
+      return seg.startSlot + '-' + seg.endSlot + ' ' + seg.tutorIds.join(',');
+    }).join(' | '), '14-25 p,s', 'a cramped stretch merges into the next, names joined, and so on to the end');
+    var tail = U.mergeCrampedSegments([
+      { startSlot: 10, endSlot: 14, tutorIds: ['h'] },
+      { startSlot: 14, endSlot: 16, tutorIds: ['d', 'h'] }
+    ], function (seg) { return seg.endSlot - seg.startSlot >= 4; });
+    r.eq(tail.map(function (seg) {
+      return seg.startSlot + '-' + seg.endSlot + ' ' + seg.tutorIds.join(',');
+    }).join(' | '), '10-16 h,d', 'a cramped last stretch folds back into the one before');
+    r.eq(U.mergeCrampedSegments([{ startSlot: 1, endSlot: 2, tutorIds: ['x'] }],
+      function () { return false; }).length, 1, 'a lone stretch stays as it is');
+
+    r.eq(U.sortedNames(['Olivia', 'chance', 'Emma']).join(','), 'chance,Emma,Olivia',
+      'and the order ignores capitalisation');
 
     // An hour with nobody in splits the cover rather than papering over it.
     var split = U.coverageRuns([shift('bio', 3, 4, 8), shift('bio', 3, 10, 14)], tutors);
@@ -428,6 +475,7 @@
     r.ok(U.blockGap(half.hue, U.laneColors(lanes[0], false).hue) > U.blockGap(half.hue, whole.hue),
       'while still sitting nearer its own lane than another one');
     r.eq(U.contrastRatio(half.ink, half.bg) >= 4.5, true, 'a partial block still reads AA');
+    r.eq(half.bar, whole.bar, 'and keeps the bold bar of its lane');
 
     // The real fixture, as a sanity check that it holds together at size.
     var state = fixtureState();
@@ -474,6 +522,16 @@
       }
     }
     r.ok(identical, 'round trip preserves names, subjects, caps and availability');
+    r.eq(text.split('\r\n')[0].indexOf('MaxHoursPerDay'), -1, 'the export has no daily cap column');
+
+    // A file exported before the daily cap went away still imports, and a blank
+    // weekly figure is left for the schedule's own default to fill.
+    var old = TS.csv.importTutors(
+      'First,Last,BIO,MaxHoursPerWeek,MaxHoursPerDay,Availability\nJo,Lin,Yes,,6,"Mon 1-4pm"\n');
+    r.eq(old.warnings.length, 0, 'an older file with a daily cap column imports cleanly',
+      old.warnings.join(' | '));
+    r.eq(old.tutors[0].maxHoursPerWeek, undefined, 'a blank weekly figure is left to the default');
+    r.eq(TS.store.normalizeTutor(old.tutors[0]).maxHoursPerWeek, 20, 'which is 20 hours');
 
     var warnings = [];
     var avail = TS.csv.parseAvailability('Mon-Fri 3pm-8pm', function (m) { warnings.push(m); });
@@ -527,7 +585,8 @@
     r.eq(st.coveredSlots, st.totalSlots, 'Config B: every open half hour is covered',
       'window ' + U.formatMinutes(U.slotStartMinutes(st.window.start)) + '-' +
       U.formatMinutes(U.slotStartMinutes(st.window.end)));
-    r.ok(st.overCapacitySlots === 0, 'Config B: nothing exceeds two tutors at once');
+    r.ok(st.overCapacitySlots === 0, 'Config B: the center never holds more than its caps allow');
+    r.eq(st.returnTrips, 0, 'Config B: nobody is sent away and asked back the same day');
 
     // Checked across the roster rather than for one tutor on one day. Nobody in
     // this fixture offers more than five unbroken hours, so the threshold is not
@@ -579,7 +638,7 @@
       }).join('; '));
     r.ok(st.totalHours >= 69, 'Config A: the budget is actually spent', st.totalHours + ' h');
 
-    // Approved hours are the same 15 for everyone; what each tutor is willing to
+    // Approved hours are the same for everyone; what each tutor is willing to
     // work is the availability they handed in. Neither may be exceeded.
     var beyond = st.perTutor.filter(function (p) {
       var t = null;
@@ -595,7 +654,8 @@
     var lowest = Math.min.apply(null, hours);
     var highest = Math.max.apply(null, hours);
     r.ok(lowest >= 3, 'Config A: no tutor is starved of hours', 'lowest is ' + lowest + ' h');
-    r.ok(highest <= 15, 'Config A: no tutor exceeds their cap', 'highest is ' + highest + ' h');
+    r.ok(highest <= state.settings.defaultMaxHours, 'Config A: no tutor exceeds their cap',
+      'highest is ' + highest + ' h');
     r.note('  spread ' + lowest + '-' + highest + ' h against a 7 h fair share');
 
     return st;
@@ -638,6 +698,8 @@
       state.settings.weeklyBudgetEnabled = rand() < 0.5;
       state.settings.weeklyBudgetHours = 20 + Math.floor(rand() * 90);
       state.settings.maxConcurrent = 1 + Math.floor(rand() * 3);
+      state.settings.eveningMaxConcurrent = 1 + Math.floor(rand() * 3);
+      state.settings.eveningStartSlot = 12 + Math.floor(rand() * 16);
       state.settings.minShiftSlots = 1 + Math.floor(rand() * 4);
       state.settings.breakAfterHours = 3 + Math.floor(rand() * 6);
 
@@ -655,7 +717,6 @@
             ap1: rand() < 0.5, ap2: rand() < 0.5
           },
           maxHoursPerWeek: 2 + Math.floor(rand() * 20),
-          maxHoursPerDay: rand() < 0.3 ? 1 + Math.floor(rand() * 8) : null,
           availability: avail
         }));
       }
@@ -926,6 +987,18 @@
     ]);
     r.eq(grouped.length, 2, 'the handout collapses the same window in the same room');
     r.eq(U.daysLabel(grouped[0].days), 'Tue & Thu', 'and names both days');
+
+    // Listed the way the week is read -- first day, then time, then name --
+    // not in the order they happened to be entered.
+    var ordered = U.groupOffRoom([
+      { id: 'o1', tutorId: 'zoe', day: 3, startSlot: 4, endSlot: 8, kind: 'embedded', room: 'A' },
+      { id: 'o2', tutorId: 'amy', day: 1, startSlot: 12, endSlot: 16, kind: 'embedded', room: 'B' },
+      { id: 'o3', tutorId: 'bea', day: 1, startSlot: 6, endSlot: 10, kind: 'embedded', room: 'C' },
+      { id: 'o4', tutorId: 'zoe', day: 1, startSlot: 12, endSlot: 16, kind: 'embedded', room: 'D' },
+      { id: 'o5', tutorId: 'cal', day: 0, startSlot: 18, endSlot: 20, kind: 'embedded', room: 'E' }
+    ], { zoe: 'Zoe', amy: 'Amy', bea: 'Bea', cal: 'Cal' });
+    r.eq(ordered.map(function (g) { return g.tutorId; }).join(','), 'cal,bea,amy,zoe,zoe',
+      'floating tutors are listed by day, then time, then name');
     r.eq(U.daysLabel([0, 2, 4]), 'Mon, Wed & Fri', 'three days read as a list');
   }
 
@@ -1053,6 +1126,157 @@
     U.setSubjects(U.defaultSubjects());
   }
 
+  /* ---- 9. defaults ------------------------------------------------------- */
+
+  function testDefaults(r) {
+    var s = TS.store.defaultSettings();
+    r.eq(s.defaultMaxHours, 20, 'a tutor is approved for 20 hours a week by default');
+    r.eq(s.maxConcurrent, 3, 'up to three tutors at once through the day');
+    r.eq(s.eveningMaxConcurrent, 2, 'two in the evening');
+    r.eq(U.formatMinutes(U.slotStartMinutes(s.eveningStartSlot)), '5:00 PM', 'which starts at 5:00 PM');
+    r.ok(!('maxHoursPerDay' in s), 'there is no daily hour cap any more');
+    r.eq(U.capSummary(s), '3 tutors at once before 5:00 PM, 2 after', 'and the rule reads as it should');
+
+    // A schedule saved with the old daily cap loads without it.
+    var old = TS.store.migrate({
+      settings: { maxHoursPerDay: 8, maxConcurrent: 2 },
+      tutors: [{ id: 't', firstName: 'Old', maxHoursPerDay: 4, availability: [] }],
+      assignments: []
+    });
+    r.ok(!('maxHoursPerDay' in old.settings), 'an old daily cap setting is dropped on load');
+    r.ok(!('maxHoursPerDay' in old.tutors[0]), 'and so is a tutor\'s own');
+    r.eq(old.settings.maxConcurrent, 2, 'while a cap someone chose is kept');
+    r.eq(TS.store.normalizeTutor({ firstName: 'New', availability: [] }).maxHoursPerWeek, 20,
+      'a tutor with no figure of their own gets the 20-hour default');
+  }
+
+  /* ---- 10. the evening cap ----------------------------------------------- */
+
+  function testEveningCap(r) {
+    var settings = TS.store.defaultSettings();   // 3 by day, 2 from 5:00 PM
+    var five = settings.eveningStartSlot;
+    var at = function (id, from, to) {
+      return { id: id + from, tutorId: id, day: 0, startSlot: from, endSlot: to, kind: 'main' };
+    };
+    var overAt = function (list) {
+      var cap = U.capacity(settings, list), out = [];
+      for (var s = 0; s < U.SLOTS_PER_DAY; s++) {
+        if (cap.counts[U.idx(0, s)] > cap.limits[U.idx(0, s)]) out.push(s);
+      }
+      return out;
+    };
+
+    r.eq(overAt([at('a', 10, 18), at('b', 10, 18), at('c', 10, 18)]).length, 0,
+      'three at once before the evening is fine');
+    r.eq(overAt([at('a', 10, 18), at('b', 10, 18), at('c', 10, 18), at('d', 12, 16)]).length, 4,
+      'a fourth is over for every half hour they are in');
+
+    // Three who were in before 5:00 bleed through it and finish their shifts.
+    r.eq(overAt([at('a', 16, 22), at('b', 16, 24), at('c', 18, 21)]).length, 0,
+      'three on shift before 5:00 PM may all carry on past it');
+    // ...but nobody new arrives while that is more than the evening allows.
+    r.eq(overAt([at('a', 16, 22), at('b', 16, 22), at('c', 18, 22), at('d', 20, 22)]).join(','),
+      [five, five + 1].join(','), 'a fourth arriving at 5:00 PM is over');
+    r.eq(overAt([at('a', 16, 24), at('b', 16, 21), at('c', 16, 21), at('d', 22, 24)]).length, 0,
+      'once the carry-overs leave, someone new may come in up to the evening cap');
+    r.eq(overAt([at('a', 16, 24), at('b', 18, 21), at('c', 21, 24)]).length, 0,
+      'one who carries on and one who arrives is the evening cap exactly');
+    r.eq(overAt([at('a', 16, 24), at('b', five, 24), at('c', five, 24)]).join(','),
+      [five, five + 1, five + 2, five + 3].join(','),
+      'but two arriving beside one who carries on is too many');
+    r.eq(overAt([at('a', 16, 19), at('a', 20, 24), at('b', five, 24), at('c', five, 24)]).length, 4,
+      'a tutor who took a break before 5:00 PM does not count as carrying on');
+
+    // The optimizer keeps to it: a roster free all afternoon and evening puts
+    // three on through the day and never more than the rule allows after.
+    var state = TS.store.emptyState();
+    for (var i = 0; i < 5; i++) {
+      var t = TS.store.normalizeTutor({
+        id: 'ev' + i, firstName: 'Eve' + i, subjects: { bio: true, micro: i % 2 === 0, ap1: i > 2 },
+        maxHoursPerWeek: 20, availability: []
+      });
+      for (var d = 0; d < U.DAYS; d++) {
+        for (var s = 12; s < U.SLOTS_PER_DAY; s++) t.availability[U.idx(d, s)] = 1;
+      }
+      state.tutors.push(t);
+    }
+    state.assignments = TS.optimizer.optimize(state, { seed: 9, iterations: 40000 });
+    r.eq(TS.optimizer.validate(state, state.assignments).length, 0,
+      'an optimized evening-heavy roster keeps to both caps',
+      TS.optimizer.validate(state, state.assignments).slice(0, 4).join(' | '));
+    var cap = U.capacity(state.settings, state.assignments);
+    var peakDay = 0, peakEve = 0;
+    for (var dd = 0; dd < U.DAYS; dd++) {
+      for (var ss = 0; ss < U.SLOTS_PER_DAY; ss++) {
+        var n = cap.counts[U.idx(dd, ss)];
+        if (ss < five) peakDay = Math.max(peakDay, n);
+      }
+      // Past the point every carry-over has left, only the evening cap stands.
+      var late = cap.counts[U.idx(dd, U.SLOTS_PER_DAY - 1)];
+      peakEve = Math.max(peakEve, late);
+    }
+    r.eq(peakDay, 3, 'the daytime cap of three is used');
+    r.ok(peakEve <= 2, 'the last half hour of the evening has no more than two', String(peakEve));
+
+    // Placing a shift by hand is measured the same way.
+    var hand = TS.store.emptyState();
+    hand.tutors = ['a', 'b', 'c'].map(function (id) {
+      var t = TS.store.normalizeTutor({ id: id, firstName: id, subjects: { bio: true }, availability: [] });
+      for (var s = 0; s < U.SLOTS_PER_DAY; s++) t.availability[U.idx(0, s)] = 1;
+      return t;
+    });
+    hand.assignments = [at('a', 16, 22), at('b', 16, 22)].map(TS.store.normalizeAssignment);
+    TS.store.replaceState(hand);
+    var late3 = TS.calendar.checkPlacement(TS.store.state,
+      { id: null, tutorId: 'c', kind: 'main' }, 0, five, 22);
+    var early3 = TS.calendar.checkPlacement(TS.store.state,
+      { id: null, tutorId: 'c', kind: 'main' }, 0, 16, 22);
+    r.ok(late3.ok && late3.overCapacity, 'a third arriving at 5:00 PM is flagged over the cap');
+    r.ok(early3.ok && !early3.overCapacity, 'a third who started at 3:00 PM may bleed through');
+    TS.store.reset();
+    TS.store.clearHistory();
+  }
+
+  /* ---- 11. continuous shifts --------------------------------------------- */
+
+  function testContinuousShifts(r) {
+    // Three tutors free all day, a budget that does not reach every hour twice:
+    // the old scoring was content to send someone home at noon and ask them
+    // back at three. Nobody should be.
+    var state = TS.store.emptyState();
+    for (var i = 0; i < 3; i++) {
+      var t = TS.store.normalizeTutor({
+        id: 'c' + i, firstName: 'C' + i, subjects: { bio: true, micro: i === 1, ap1: i === 2 },
+        maxHoursPerWeek: 20, availability: []
+      });
+      for (var d = 0; d < U.DAYS; d++) {
+        for (var s = U.CORE_START_SLOT; s < U.CORE_END_SLOT; s++) t.availability[U.idx(d, s)] = 1;
+      }
+      state.tutors.push(t);
+    }
+    state.assignments = TS.optimizer.optimize(state, { seed: 4, iterations: 60000 });
+    var st = TS.optimizer.stats(state, state.assignments);
+    r.eq(st.returnTrips, 0, 'nobody is sent away and asked back without a reason',
+      JSON.stringify(TS.optimizer.returnTrips(state, state.assignments).slice(0, 3)));
+    r.eq(st.coveredSlots, st.totalSlots, 'and the week is still fully covered');
+
+    // A class in the middle of the day is a reason; so is the break the
+    // six-hour rule demands. Neither is counted as a return trip.
+    var solo = TS.store.emptyState();
+    var who = TS.store.normalizeTutor({ id: 'solo', firstName: 'Solo', subjects: { bio: true },
+      maxHoursPerWeek: 20, availability: [] });
+    for (var s2 = 4; s2 < 24; s2++) who.availability[U.idx(0, s2)] = 1;
+    who.availability[U.idx(0, 10)] = 0;
+    solo.tutors = [who];
+    var trips = function (list) {
+      return TS.optimizer.returnTrips(solo, list.map(TS.store.normalizeAssignment)).length;
+    };
+    var sh = function (a, b) { return { id: 'x' + a, tutorId: 'solo', day: 0, startSlot: a, endSlot: b }; };
+    r.eq(trips([sh(4, 10), sh(11, 16)]), 0, 'leaving for a class is not a return trip');
+    r.eq(trips([sh(4, 15), sh(16, 20)]), 0, 'nor is the break the six-hour rule asks for');
+    r.eq(trips([sh(11, 14), sh(17, 20)]), 1, 'but being sent away for no reason is');
+  }
+
   function testEmptyRoster(r) {
     var state = TS.store.emptyState();
     var result = TS.optimizer.optimize(state, { iterations: 500 });
@@ -1075,6 +1299,9 @@
     testSubjectClasses(r);
     testShiftKinds(r);
     testMergeTouching(r);
+    testDefaults(r);
+    testEveningCap(r);
+    testContinuousShifts(r);
     testEmptyRoster(r);
     testFixtureBudgetOff(r);
     testFixtureBudgetOn(r);

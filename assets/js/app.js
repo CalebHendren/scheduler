@@ -308,7 +308,7 @@
     if (!check.ok) return check.reason;
 
     if (check.overCapacity && !root.confirm(
-      'That puts more than ' + state.settings.maxConcurrent + ' tutors on at once for ' +
+      'That goes over the cap of ' + U.capSummary(state.settings) + ' for ' +
       (check.overSlots / 2) + ' hour(s).\n\nPlace it anyway? It will be flagged on the schedule.'
     )) {
       return 'Cancelled — nothing was added.';
@@ -380,7 +380,7 @@
       var check = TS.calendar.checkPlacement(state, value, value.day, value.startSlot, value.endSlot);
       if (!check.ok) return check.reason;
       if (check.overCapacity && !root.confirm(
-        'That puts more than ' + state.settings.maxConcurrent + ' tutors at the center at once for ' +
+        'That goes over the center\'s cap of ' + U.capSummary(state.settings) + ' for ' +
         (check.overSlots / 2) + ' hour(s).\n\nSave it anyway? It will be flagged on the schedule.'
       )) {
         return 'Cancelled — nothing was changed.';
@@ -572,9 +572,9 @@
   ];
 
   var RULE_FIELDS = [
-    { key: 'maxConcurrent', label: 'Max tutors at one time', min: 1, max: 4, step: 1 },
+    { key: 'maxConcurrent', label: 'Max tutors at one time', min: 1, max: 6, step: 1 },
+    { key: 'eveningMaxConcurrent', label: 'Max tutors in the evening', min: 1, max: 6, step: 1 },
     { key: 'defaultMaxHours', label: 'Default weekly hours', min: 1, max: 40, step: 0.5 },
-    { key: 'maxHoursPerDay', label: 'Max hours per day', min: 1, max: 14, step: 0.5 },
     { key: 'breakAfterHours', label: 'Break required after (hours)', min: 2, max: 12, step: 0.5 }
   ];
 
@@ -627,6 +627,22 @@
         '" min="' + f.min + '" max="' + f.max + '" step="' + f.step + '" value="' + s[f.key] + '"></div>';
     });
     html += '</div>' +
+      // The evening starts on a half hour, never the first of the day -- there
+      // would be nobody on before it to carry through.
+      '<div class="field"><label for="set-eveningStartSlot">Evening starts at</label>' +
+        '<select id="set-eveningStartSlot" data-setting-num="eveningStartSlot">' +
+          (function () {
+            var opts = '';
+            for (var n = 1; n <= U.SLOTS_PER_DAY; n++) {
+              opts += '<option value="' + n + '"' + (n === s.eveningStartSlot ? ' selected' : '') + '>' +
+                (n === U.SLOTS_PER_DAY ? 'No evening cap'
+                  : U.formatMinutes(U.slotStartMinutes(n))) + '</option>';
+            }
+            return opts;
+          })() +
+        '</select>' +
+        '<p class="field__hint">From then on, only the evening number may be at the center. ' +
+        'Anyone already on shift may finish it.</p></div>' +
       '<div class="field"><label for="set-minShiftSlots">Minimum shift length</label>' +
         '<select id="set-minShiftSlots" data-setting-num="minShiftSlots">' +
           [1, 2, 3, 4, 5, 6].map(function (n) {

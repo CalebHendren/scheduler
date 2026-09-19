@@ -20,11 +20,14 @@
       qrUrl: 'https://www.tutor.com',
       qrCaption: 'Free 24/7 online tutoring',
       minShiftSlots: 2,
-      maxConcurrent: 2,
+      // Up to three at the center through the day, two once the evening starts
+      // -- see U.capRules for how a shift already running carries past it.
+      maxConcurrent: 3,
+      eveningMaxConcurrent: 2,
+      eveningStartSlot: 20,          // 5:00 PM
       breakAfterHours: 6,
       breakSlots: 1,
-      defaultMaxHours: 15,
-      maxHoursPerDay: 8,
+      defaultMaxHours: 20,
       weeklyBudgetEnabled: false,
       weeklyBudgetHours: 80,
       evenDistribution: true,
@@ -209,9 +212,9 @@
       lastName: String(t.lastName || '').trim(),
       colorIndex: typeof t.colorIndex === 'number' ? t.colorIndex : 0,
       subjects: subjects,
-      maxHoursPerWeek: typeof t.maxHoursPerWeek === 'number' ? t.maxHoursPerWeek : 15,
+      maxHoursPerWeek: typeof t.maxHoursPerWeek === 'number'
+        ? t.maxHoursPerWeek : defaultSettings().defaultMaxHours,
       minHoursPerWeek: typeof t.minHoursPerWeek === 'number' ? t.minHoursPerWeek : 0,
-      maxHoursPerDay: typeof t.maxHoursPerDay === 'number' ? t.maxHoursPerDay : null,
       availability: avail,
       notes: String(t.notes || '')
     };
@@ -384,16 +387,16 @@
 
   var MON = 0, TUE = 1, WED = 2, THU = 3, FRI = 4;
 
-  /* Everyone is approved for the same 15 hours a week -- that is a department
+  /* Everyone is approved for the same 20 hours a week -- that is a department
    * decision, not a personal one. What differs is availability, because these
-   * tutors are students first: a couple can offer the full 15, most offer a
+   * tutors are students first: a couple can offer 15 or so, most offer a
    * few afternoons around their own classes, and one or two can only manage a
    * single shift. Eighty hours across the roster, nobody before 9:00 AM, and
    * between them they cover 9:00 to 6:00 every day.
    */
   function sampleTutors() {
     return [
-      // 15 h -- available the full week they are approved for
+      // 15 h -- the most anyone offers, still short of what they are approved for
       { firstName: 'Anna', lastName: 'Harden', subjects: { ap1: true, ap2: true },
         availability: availability([[[MON, WED, FRI], '09:00', '14:00']]) },
       { firstName: 'Marcus', lastName: 'Bell', subjects: { bio: true },
@@ -421,10 +424,7 @@
 
   function loadSample() {
     state = emptyState();
-    sampleTutors().forEach(function (t) {
-      t.maxHoursPerWeek = 15;
-      addTutor(t);
-    });
+    sampleTutors().forEach(function (t) { addTutor(t); });
     recolorTutors();
     commit('sample');
   }

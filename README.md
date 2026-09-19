@@ -22,11 +22,11 @@ it.
 
 1. Open the site (or the single-file version) in any modern browser.
 2. Click **Load sample roster**, at the bottom of **Schedule settings**, to see how it works —
-   or **Add tutor** to start your own. The sample is ten tutors, each approved for 15 hours,
-   who between them handed in 80 hours of availability — a couple offering the full 15, most a
+   or **Add tutor** to start your own. The sample is ten tutors, each approved for 20 hours,
+   who between them handed in 80 hours of availability — a couple offering 15 or so, most a
    few afternoons, one or two a single shift.
 3. For each tutor: first and last name, the class checkboxes, their approved weekly hours
-   (15 by default), and their availability.
+   (20 by default), and their availability.
 4. Fill the week in whichever way suits you — see [Three ways to place a
    shift](#three-ways-to-place-a-shift).
 5. Adjust by hand — drag a block to move it, drag its edge to resize, lock the ones
@@ -111,18 +111,19 @@ interchangeable. A shift is one of three things, set under **Where** when you ad
 The last two ask for a room number (`OMN 286`) and are listed beside the calendar under
 **Floating Embedded Tutors** and **Open Labs**, rather than drawn as blocks. On the handout each
 kind becomes a line under the grid — *Floating Embedded Tutors: Bailey Tue & Thu 12:30–2:00 PM
-(OMN 286)* — the same footnote the old paper schedules carried. The page-2 listing keeps them in with everything
+(OMN 286)* — the same footnote the old paper schedules carried. Entries are listed the way the
+week reads: by the first day each one runs, then by start time, then by name. The page-2 listing keeps them in with everything
 else, so it stays a complete record.
 
 What they change:
 
 - **The concurrency cap counts the center only.** One tutor at the desk and a floating tutor
-  across the hall is one tutor at the desk, so a second can still be scheduled there. This is
+  across the hall is one tutor at the desk, so another can still be scheduled there. This is
   the whole point: an embedded tutor should not eat a seat in a room they are not in.
 - **They are not coverage.** An hour worked only by an embedded tutor is an empty hour at the
   center, and **Uncovered time** says so — *Every available tutor is in a class or an open lab*,
   which is a different problem from a cap or a budget, and a different fix.
-- **They are still the tutor's hours.** They count against the weekly cap, the daily limit, the
+- **They are still the tutor's hours.** They count against the weekly cap, the
   break rule and the hour budget, and nobody is ever scheduled at the center while they are
   teaching. The toolbar reports them separately as **Classes & labs**.
 - **Auto-optimize will not invent one.** They are tied to a real class in a real room, so you
@@ -152,7 +153,7 @@ with simulated annealing. It runs in slices so the page never freezes, and **Can
 ### Rules it will never break
 
 Approved hours and offered hours are different things. **Approved hours per week** is what the
-department allows — the same 15 for everyone in the sample. Availability is what that tutor
+department allows — 20 by default, and the same 20 for everyone in the sample. Availability is what that tutor
 handed in: which of those hours they actually want to work. A tutor is never scheduled beyond
 either one, and the hours they offered are hours the optimizer tries to use.
 
@@ -160,15 +161,24 @@ either one, and the hours they offered are hours the optimizer tries to use.
 |---|---|---|
 | Inside the tutor's availability | always | — |
 | Never in two places at once | always | — |
-| At most N tutors at the center at once | 2 | Schedule settings |
-| Weekly hours per tutor | 15 | on each tutor |
-| Daily hours per tutor | 8 | Schedule settings, or per tutor |
+| At most N tutors at the center at once | 3 | Schedule settings |
+| At most N in the evening, for anyone arriving then | 2 from 5:00 PM | Schedule settings |
+| Weekly hours per tutor | 20 | on each tutor |
 | Minimum shift length | 1 hour | Schedule settings |
 | A 30-minute break before 6 hours straight | on | Schedule settings |
 | Total scheduled hours, everyone combined | off | Schedule settings |
 
 The break rule means a continuous run tops out at 5.5 hours, so a six-hour day comes out as
 something like 4 hours, a 30-minute break, then 2 hours.
+
+The evening cap is about who *arrives* in the evening, not who is still there. A tutor already
+on shift when the evening starts may bleed through it and finish their shift, even if that
+leaves three at the center at 5:30. Nobody new comes in until the room has drained below the
+evening number, and it never refills past it. Both the number and the time it starts are under
+**Schedule settings**; pick **No evening cap** to hold the day cap all day.
+
+There is no daily hour limit. The break rule and the weekly cap already bound a day, and the
+optimizer's preference for continuous shifts keeps a tutor's day in one piece.
 
 ### What it optimizes for
 
@@ -177,6 +187,11 @@ nobody. After that it prefers pairing tutors who cover *different* classes, so a
 walking in has the best chance of finding their subject. Redundant pairs are mildly
 discouraged but still chosen whenever the alternative is an empty hour: if the only two people
 free on Monday afternoon both tutor AP1, both get scheduled.
+
+It keeps each tutor's day in one piece. A tutor should only have to leave and come back
+for a class of their own (a hole in the availability they handed in) or for the break the
+six-hour rule asks for. Any other gap between two of their shifts costs the schedule heavily,
+so a 10–12 and a 2–4 becomes one 10–2 or 12–4 wherever that still covers the week.
 
 It also prefers fewer, longer blocks over scattered short ones, and spreads hours across the
 roster rather than pooling them on whoever happens to fit best. That last one is the
@@ -232,8 +247,10 @@ Because storage is per-browser, use **Export** to move between machines or keep 
 
 ### The CSV format
 
-`First, Last, BIO, MICRO, AP1, AP2, MaxHoursPerWeek, MaxHoursPerDay,
-MinHoursPerWeek, Availability, Notes`
+`First, Last, BIO, MICRO, AP1, AP2, MaxHoursPerWeek, MinHoursPerWeek, Availability, Notes`
+
+A blank `MaxHoursPerWeek` takes the schedule's default. A `MaxHoursPerDay` column from an older
+export is ignored.
 
 One column per class, in the order they appear under **Schedule settings → Classes**, headed by
 the short code — add Chemistry and a `CHEM` column appears. An import accepts either the code or
@@ -271,8 +288,17 @@ Two buttons, for two different needs:
 
 Page 3 is the same week read the other way round. The schedule is written tutor by tutor, but
 the question a student turns up with is *when can I get help with Micro?* — so page 3 gives
-each class a lane of its own and shows the stretches it is covered for, with the tutors who may
-be in written inside.
+each class a lane of its own and shows the stretches it is covered for, with the tutors who are
+in written inside.
+
+A block runs for as long as its class is covered, with the class code in bold at the top. Where
+the tutors change partway through, a faint line marks the change, and each stretch shows who is
+in, names in alphabetical order, with its time underneath — *Chance, Olivia* over
+*9:00 AM–12:00 PM*, then *Olivia* over *12:00–2:00 PM*. A stretch too short to name everyone
+in it merges into the next one (the last one into the one before), listing everyone from both
+across their joined hours — close enough, and never a name cut in half. Otherwise the time
+always stays and the names give way. A gap with nobody in for the class ends the block; the next one starts
+with the class code again.
 
 It is otherwise page 1 exactly: the same header, the same notes, the same band of shifts held
 elsewhere, the same QR block. Only the grid changes, and the legend that decodes it.
@@ -421,7 +447,9 @@ colorblind reader too and that the assignment does not waste that pair on two tu
 side by side, CSV round-tripping and parsing, the class list and the bitmask it drives,
 embedded classes and open labs staying out of coverage while still spending a tutor's hours,
 touching shifts joining into one, class coverage turning a tutor's shift into one run per lane
-they cover and breaking a run where the A&P label changes, the ten-tutor fixture with the budget
+they cover and breaking a run where the A&P label changes and a segment inside it where the tutors do, the day and
+evening caps (including tutors bleeding through into the evening), nobody being sent away and
+asked back without a class or a break in between, the ten-tutor fixture with the budget
 both on and off, locked
 shifts surviving re-optimization, back-to-back shifts coming out as one block, fitting a single
 tutor without moving anyone else, and a randomized fuzz pass that asserts no generated schedule

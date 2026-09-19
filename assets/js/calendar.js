@@ -96,18 +96,11 @@
     }
 
     var weekSlots = (end - start);
-    var daySlots = (end - start);
     others.forEach(function (a) {
-      if (a.tutorId !== tutor.id) return;
-      weekSlots += a.endSlot - a.startSlot;
-      if (a.day === day) daySlots += a.endSlot - a.startSlot;
+      if (a.tutorId === tutor.id) weekSlots += a.endSlot - a.startSlot;
     });
     if (weekSlots > tutor.maxHoursPerWeek * 2) {
       return { ok: false, reason: 'That puts ' + tutor.firstName + ' over their ' + tutor.maxHoursPerWeek + ' hour weekly cap.' };
-    }
-    var perDay = typeof tutor.maxHoursPerDay === 'number' ? tutor.maxHoursPerDay : s.maxHoursPerDay;
-    if (daySlots > perDay * 2) {
-      return { ok: false, reason: 'That puts ' + tutor.firstName + ' over their ' + perDay + ' hour daily limit.' };
     }
 
     var row = new Array(U.SLOTS_PER_DAY);
@@ -137,10 +130,17 @@
     // without being measured against it.
     if (U.offRoom(assignment)) return { ok: true, overCapacity: false, overSlots: 0 };
 
-    var counts = occupancy(others);
+    // Measured with the shift in place: whether it may run past the evening
+    // cap depends on whether it started before the evening did.
+    var placed = {};
+    Object.keys(assignment).forEach(function (k) { placed[k] = assignment[k]; });
+    placed.day = day;
+    placed.startSlot = start;
+    placed.endSlot = end;
+    var cap = U.capacity(s, others.concat([placed]));
     var over = 0;
     for (var c = start; c < end; c++) {
-      if (counts[U.idx(day, c)] + 1 > s.maxConcurrent) over++;
+      if (cap.counts[U.idx(day, c)] > cap.limits[U.idx(day, c)]) over++;
     }
 
     return { ok: true, overCapacity: over > 0, overSlots: over };
@@ -152,7 +152,7 @@
     var dark = TS.theme.isDark();
     var labels = U.displayNames(state.tutors);
     var rh = rowHeight(container);
-    var counts = occupancy(state.assignments);
+    var cap = U.capacity(state.settings, state.assignments);
     var selected = (options && options.selectedTutorId)
       ? TS.store.getTutor(options.selectedTutorId) : null;
     // The grid is the tutoring center and nothing else; embedded classes and
@@ -227,7 +227,7 @@
       // property of the time, not of any one tutor.
       var bandStart = null;
       for (var bs = win.start; bs <= win.end; bs++) {
-        var over = bs < win.end && counts[U.idx(d, bs)] > state.settings.maxConcurrent;
+        var over = bs < win.end && cap.counts[U.idx(d, bs)] > cap.limits[U.idx(d, bs)];
         if (over && bandStart === null) bandStart = bs;
         else if (!over && bandStart !== null) {
           var stripe = doc.createElement('div');
@@ -321,8 +321,10 @@
   function renderAside(container, state, handlers) {
     var dark = TS.theme.isDark();
     var labels = U.displayNames(state.tutors);
+    // Read the way the week is: by day, then by time, then by name.
     var shifts = U.offRoomShifts(state.assignments).slice().sort(function (a, b) {
-      return a.day - b.day || a.startSlot - b.startSlot;
+      return a.day - b.day || a.startSlot - b.startSlot || a.endSlot - b.endSlot ||
+        U.compareNames(labels[a.tutorId] || '', labels[b.tutorId] || '');
     });
 
     container.innerHTML = '';
@@ -649,8 +651,8 @@
 
     if (check.overCapacity) {
       var ok = root.confirm(
-        'That puts more than ' + state.settings.maxConcurrent +
-        ' tutors on at once for ' + (check.overSlots / 2) + ' hour(s).\n\n' +
+        'That goes over the cap of ' + U.capSummary(state.settings) + ' for ' +
+        (check.overSlots / 2) + ' hour(s).\n\n' +
         'Place it anyway? It will be flagged on the schedule.'
       );
       if (!ok) { onChangeCb(); return; }

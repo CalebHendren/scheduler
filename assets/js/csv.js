@@ -3,8 +3,10 @@
   var TS = (root.TS = root.TS || {});
   var U = TS.util;
 
+  // A MaxHoursPerDay column from an older export is simply not read: the
+  // schedule no longer caps hours by the day.
   var TAIL_COLUMNS = [
-    'MaxHoursPerWeek', 'MaxHoursPerDay', 'MinHoursPerWeek', 'Availability', 'Notes'
+    'MaxHoursPerWeek', 'MinHoursPerWeek', 'Availability', 'Notes'
   ];
 
   /* One column per class, so a spreadsheet follows whatever classes the
@@ -251,7 +253,6 @@
         .concat(classes.map(function (c) { return t.subjects[c.key] ? 'Yes' : 'No'; }))
         .concat([
           t.maxHoursPerWeek,
-          typeof t.maxHoursPerDay === 'number' ? t.maxHoursPerDay : '',
           t.minHoursPerWeek || 0,
           formatAvailability(t.availability),
           t.notes || ''
@@ -314,7 +315,6 @@
       });
 
       var maxWeek = parseFloat(cell(row, 'maxhoursperweek'));
-      var maxDay = parseFloat(cell(row, 'maxhoursperday'));
       var minWeek = parseFloat(cell(row, 'minhoursperweek'));
 
       var subjects = {};
@@ -328,8 +328,8 @@
         firstName: first,
         lastName: cell(row, 'last'),
         subjects: subjects,
-        maxHoursPerWeek: isFinite(maxWeek) ? maxWeek : 15,
-        maxHoursPerDay: isFinite(maxDay) ? maxDay : null,
+        // Left out when the cell is blank, so the schedule's default applies.
+        maxHoursPerWeek: isFinite(maxWeek) ? maxWeek : undefined,
         minHoursPerWeek: isFinite(minWeek) ? minWeek : 0,
         availability: availability,
         notes: cell(row, 'notes')
