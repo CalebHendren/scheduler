@@ -198,7 +198,6 @@
    */
   function drawClassBlocks(pdf, state, labels, g) {
     var runs = U.coverageRuns(state.assignments, state.tutors);
-    var allLanes = U.coverageLanes();
 
     for (var day = 0; day < U.DAYS; day++) {
       var dayRuns = runs.filter(function (run) { return run.day === day; });
@@ -211,7 +210,7 @@
       lanes.sort(function (a, b) { return a - b; });
 
       dayRuns.forEach(function (run) {
-        var colors = U.laneColors(allLanes[run.lane], false);
+        var colors = U.coverageColors(run, false);
         var bg = U.hexToRgb(colors.bg);
         var bar = U.hexToRgb(colors.bar);
         var laneW = (g.colW - DAY_PAD * 2) / lanes.length;

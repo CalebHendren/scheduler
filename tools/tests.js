@@ -414,6 +414,21 @@
     r.eq(U.laneColors(lanes[1], false).hue, '#B9228C', 'Micro is pink');
     r.eq(U.laneColors(paired[0], false).hue, '#2222B9', 'and the A&P lane is indigo');
 
+    /* Half a lane on offer has to look like less of it, not the same as all of
+     * it -- close enough to read as that lane, far enough not to be mistaken
+     * for a full one at a glance.
+     */
+    var whole = U.coverageColors(bothRuns[0], false);
+    var half = U.coverageColors(laneOf(handover, 'AP1')[0], false);
+    r.eq(whole.hue, '#2222B9', 'a block covering the whole lane wears its color');
+    r.ok(half.hue !== whole.hue, 'one covering only part of it does not', half.hue);
+    var wf = U.hexToRgb(whole.bg), hf = U.hexToRgb(half.bg);
+    var apart = Math.max(Math.abs(wf[0] - hf[0]), Math.abs(wf[1] - hf[1]), Math.abs(wf[2] - hf[2]));
+    r.ok(apart >= 8, 'and the two fills are far enough apart to see', 'channel delta ' + apart);
+    r.ok(U.blockGap(half.hue, U.laneColors(lanes[0], false).hue) > U.blockGap(half.hue, whole.hue),
+      'while still sitting nearer its own lane than another one');
+    r.eq(U.contrastRatio(half.ink, half.bg) >= 4.5, true, 'a partial block still reads AA');
+
     // The real fixture, as a sanity check that it holds together at size.
     var state = fixtureState();
     state.assignments = TS.optimizer.optimize(state, { iterations: 4000 });
