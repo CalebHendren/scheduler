@@ -351,6 +351,7 @@
         '</div>' +
         '<div class="field"><fieldset><legend>Availability</legend>' +
           '<div id="painter"></div>' +
+          '<p class="painter__readout" id="painter-readout" aria-live="polite"></p>' +
           '<p class="painter__hint">Click and drag to paint. With the keyboard, move with the ' +
             'arrow keys and press Space to toggle a half hour.</p>' +
           '<div id="windows-holder"></div>' +
@@ -384,6 +385,17 @@
     var painting = false;
     var paintValue = 1;
 
+    /* Each cell is the half hour between two lines, and each time is written on
+     * the line it names -- "9:00" sits on the line where 9:00 starts, not in the
+     * middle of a row -- so painting from the 9:00 line to the 1:00 line is
+     * 9:00 to 1:00. The last line of the day is labelled too, so a shift can be
+     * read to its end.
+     */
+    function tick(slot, cls) {
+      return '<span class="painter__tick' + (cls ? ' ' + cls : '') + '">' +
+        esc(U.formatMinutes(U.slotStartMinutes(slot), { omitSuffix: true })) + '</span>';
+    }
+
     function renderPainter() {
       var html = '<div class="painter"><span class="painter__corner"></span>';
       U.DAY_ABBR.forEach(function (d) {
@@ -391,17 +403,48 @@
       });
       for (var s = 0; s < U.SLOTS_PER_DAY; s++) {
         var onHour = U.slotStartMinutes(s) % 60 === 0;
-        html += '<span class="painter__time">' +
-          (onHour ? esc(U.formatMinutes(U.slotStartMinutes(s), { omitSuffix: true })) : '') + '</span>';
+        html += '<span class="painter__time">' + (onHour ? tick(s) : '') +
+          (s === U.SLOTS_PER_DAY - 1 ? tick(s + 1, 'painter__tick--end') : '') + '</span>';
         for (var d2 = 0; d2 < U.DAYS; d2++) {
+          var label = U.DAY_NAMES[d2] + ' ' + U.formatRange(s, s + 1);
           html += '<button type="button" class="painter__cell" data-day="' + d2 + '" data-slot="' + s +
             '" data-hour="' + (onHour ? 1 : 0) + '" data-on="' + working.availability[U.idx(d2, s)] +
             '" aria-pressed="' + (working.availability[U.idx(d2, s)] ? 'true' : 'false') +
-            '" aria-label="' + esc(U.DAY_NAMES[d2] + ' ' + U.formatMinutes(U.slotStartMinutes(s))) + '"></button>';
+            '" aria-label="' + esc(label) + '" title="' + esc(label) + '"></button>';
         }
       }
       html += '</div>';
       painterHolder.innerHTML = html;
+      showReadout(null);
+    }
+
+    /* -- the readout: what the pointer is on, in words --
+     * The grid alone makes a half hour easy to miss by one row, so the exact
+     * time under the pointer is spelled out, and while painting, the whole
+     * stretch from where the drag began: "Painting Tuesday 1:30-4:00 PM".
+     */
+    var readout = dialog.querySelector('#painter-readout');
+    var dragFrom = null;
+
+    function daySpan(a, b) {
+      var lo = Math.min(a, b), hi = Math.max(a, b);
+      return lo === hi ? U.DAY_NAMES[lo] : U.DAY_ABBR[lo] + '–' + U.DAY_ABBR[hi];
+    }
+
+    function showReadout(cell) {
+      if (!cell) {
+        readout.textContent = 'Point at a half hour to see exactly when it starts and ends.';
+        return;
+      }
+      var day = +cell.getAttribute('data-day'), slot = +cell.getAttribute('data-slot');
+      if (painting && dragFrom) {
+        readout.textContent = (paintValue ? 'Adding ' : 'Clearing ') +
+          daySpan(dragFrom.day, day) + ' ' +
+          U.formatRange(Math.min(dragFrom.slot, slot), Math.max(dragFrom.slot, slot) + 1);
+        return;
+      }
+      readout.textContent = U.DAY_NAMES[day] + ' ' + U.formatRange(slot, slot + 1) + ' — ' +
+        (working.availability[U.idx(day, slot)] ? 'available' : 'not available');
     }
 
     function setCell(day, slot, value) {
@@ -420,19 +463,31 @@
       var day = +cell.getAttribute('data-day'), slot = +cell.getAttribute('data-slot');
       paintValue = working.availability[U.idx(day, slot)] ? 0 : 1;
       painting = true;
+      dragFrom = { day: day, slot: slot };
       setCell(day, slot, paintValue);
+      showReadout(cell);
     });
 
     painterHolder.addEventListener('mouseover', function (e) {
-      if (!painting) return;
       var cell = e.target.closest('.painter__cell');
       if (!cell) return;
-      setCell(+cell.getAttribute('data-day'), +cell.getAttribute('data-slot'), paintValue);
+      if (painting) setCell(+cell.getAttribute('data-day'), +cell.getAttribute('data-slot'), paintValue);
+      showReadout(cell);
+    });
+
+    painterHolder.addEventListener('mouseleave', function () {
+      if (!painting) showReadout(null);
+    });
+
+    painterHolder.addEventListener('focusin', function (e) {
+      var cell = e.target.closest('.painter__cell');
+      if (cell) showReadout(cell);
     });
 
     function endPaint() {
       if (!painting) return;
       painting = false;
+      dragFrom = null;
       renderWindows();
       syncSummary();
     }
@@ -451,6 +506,7 @@
       else if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
         setCell(day, slot, working.availability[U.idx(day, slot)] ? 0 : 1);
+        showReadout(cell);
         renderWindows();
         syncSummary();
         return;
