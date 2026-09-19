@@ -317,7 +317,6 @@
       lastName: tutor ? tutor.lastName : '',
       subjects: subjects,
       maxHoursPerWeek: tutor ? tutor.maxHoursPerWeek : settings.defaultMaxHours,
-      maxHoursPerDay: tutor ? tutor.maxHoursPerDay : null,
       minHoursPerWeek: tutor ? tutor.minHoursPerWeek : 0,
       availability: tutor ? tutor.availability.slice() : availabilityFromWindows([]),
       notes: tutor ? tutor.notes : ''
@@ -349,10 +348,6 @@
         '<div class="grid-2">' +
           '<div class="field"><label for="f-max">Approved hours per week</label>' +
             '<input type="number" id="f-max" min="0" max="40" step="0.5" value="' + working.maxHoursPerWeek + '"></div>' +
-          '<div class="field"><label for="f-maxday">Max hours per day</label>' +
-            '<input type="number" id="f-maxday" min="0" max="14" step="0.5" placeholder="' +
-              settings.maxHoursPerDay + ' (default)" value="' +
-              (typeof working.maxHoursPerDay === 'number' ? working.maxHoursPerDay : '') + '"></div>' +
         '</div>' +
         '<div class="field"><fieldset><legend>Availability</legend>' +
           '<div id="painter"></div>' +
@@ -553,13 +548,11 @@
         dialog.querySelector('#f-first').focus();
         return;
       }
-      var maxDayRaw = dialog.querySelector('#f-maxday').value.trim();
       var payload = {
         firstName: first,
         lastName: dialog.querySelector('#f-last').value.trim(),
         subjects: working.subjects,
         maxHoursPerWeek: parseFloat(dialog.querySelector('#f-max').value) || 0,
-        maxHoursPerDay: maxDayRaw === '' ? null : (parseFloat(maxDayRaw) || 0),
         minHoursPerWeek: working.minHoursPerWeek,
         availability: working.availability,
         notes: dialog.querySelector('#f-notes').value.trim()

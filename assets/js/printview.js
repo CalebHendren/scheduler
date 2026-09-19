@@ -137,20 +137,126 @@
     return { lanes: Math.max(1, lanes.length), subjects: lanes, grid: grid };
   }
 
-  function subjectCell(run, labels, cls) {
-    var colors = U.coverageColors(run, false);
-    var spoken = run.subjects.map(function (i) { return U.SUBJECTS[i].label; });
-    var who = run.tutorIds.map(function (id) {
+  function namesOf(ids, labels) {
+    return U.sortedNames(ids.map(function (id) {
       var tutor = TS.store.getTutor(id);
       return tutor ? labels[tutor.id] : '';
-    }).filter(function (name) { return !!name; });
+    }));
+  }
 
-    return '<td class="' + cls + '" rowspan="' + (run.endSlot - run.startSlot) + '"' +
+  /* The class code heads the block and the block runs as long as the class is
+   * covered. Where the tutors change partway down, a faint rule marks the
+   * change at the height it happens, and each stretch under it carries its
+   * own names and hours.
+   */
+  /* The printed page is a fixed size, so what fits in a stretch can be worked
+   * out before it is drawn: a table cell cannot tell its contents to give way
+   * line by line. These are the print.css figures the budget rests on.
+   */
+  var PAGE_PX = 979;       // 11in landscape less the 0.4in inset each side
+  var GUTTER_PX = 52;      // .pv-time
+  var ROW_PX = 14;         // .pv-table tbody tr
+  var LABEL_PX = 12;       // .pv-block__name, 8pt at line-height 1.1
+  var LINE_PX = 10;        // .pv-block__who and __time, 6.5pt at about 1.15
+
+  /* How wide a time reads at 6.5pt, measured in Chrome. A time only ever uses
+   * these characters; anything else is priced as the widest. A pixel is kept
+   * in hand, because a time that wraps when it was not expected to would push
+   * itself out of the bottom of its stretch -- budgeting one line too many
+   * only costs a line of names.
+   */
+  var TIME_CHAR_PX = { ':': 1.9, '–': 4.4, ' ': 2.3, A: 5.6, P: 4.9, M: 7.8 };
+  var DIGIT_PX = 4.7;
+
+  // Names are ordinary words, priced at a slightly generous average and wrapped
+  // at spaces the way the browser will.
+  var NAME_CHAR_PX = 4.6;
+
+  function nameLinesNeeded(text, width) {
+    var lines = 1, used = 0;
+    text.split(' ').forEach(function (word) {
+      var w = word.length * NAME_CHAR_PX;
+      var add = used ? w + NAME_CHAR_PX : w;
+      if (used && used + add > width) { lines++; used = w; } else used += add;
+    });
+    return lines;
+  }
+
+  function fitsOneLine(text, width) {
+    var px = 0;
+    for (var i = 0; i < text.length; i++) {
+      var c = text.charAt(i);
+      px += /[0-9]/.test(c) ? DIGIT_PX : (TIME_CHAR_PX[c] || 7.8);
+    }
+    return px <= width - 1;
+  }
+
+  /* Each stretch is boxed to exactly its own hours, names over time. The page
+   * is about the class, so the class code and the time are given their lines
+   * first -- the range whole, broken after the dash, or shortened to one line
+   * ("9-12") when that is all there is -- and the names get whole lines from
+   * what is left, ending in an ellipsis rather than half a line when they run
+   * out of room.
+   */
+  function subjectCell(run, labels, cls, lanes) {
+    var colors = U.coverageColors(run, false);
+    var spoken = run.subjects.map(function (i) { return U.SUBJECTS[i].label; });
+    var who = namesOf(run.tutorIds, labels);
+    var rows = run.endSlot - run.startSlot;
+    // 4px bar, 3px padding each side and the borders, as measured.
+    var width = (PAGE_PX - GUTTER_PX) / U.DAYS / Math.max(1, lanes) - 11.5;
+
+    // Placed as a share of the block rather than in pixels, so each rule lands
+    // on its hour however tall the rows come out.
+    var pct = function (slots) { return (100 * slots / rows).toFixed(3) + '%'; };
+    function layout(seg, i) {
+      var lines = Math.floor(((seg.endSlot - seg.startSlot) * ROW_PX - 3 -
+        (i === 0 ? LABEL_PX : 0)) / LINE_PX);
+
+      var full = U.formatRange(seg.startSlot, seg.endSlot);
+      var range = full.split('–');
+      var out = { text: namesOf(seg.tutorIds, labels).join(', ') || 'unstaffed' };
+      if (fitsOneLine(full, width)) {
+        out.time = esc(full); out.timeLines = 1;
+      } else if (lines >= 3) {
+        // Either end stays whole: "9:00 AM-" over "4:00 PM". Only with a line
+        // left for names; otherwise the short form keeps both on the page.
+        out.time = '<span class="pv-nowrap">' + esc(range[0]) + '–</span>' +
+          '<span class="pv-nowrap">' + esc(range[1]) + '</span>';
+        out.timeLines = 2;
+      } else {
+        out.time = esc(U.formatRangeCompact(seg.startSlot, seg.endSlot)); out.timeLines = 1;
+      }
+      out.nameLines = Math.max(0, lines - out.timeLines);
+      out.fits = nameLinesNeeded(out.text, width) <= out.nameLines;
+      return out;
+    }
+
+    var merged = U.mergeCrampedSegments(run.segments, function (seg, i) {
+      return layout(seg, i).fits;
+    });
+    var segments = merged.map(function (seg, i) {
+      var fit = layout(seg, i);
+      var time = fit.time;
+      var names = fit.nameLines
+        ? '<span class="pv-block__who" style="-webkit-line-clamp:' + fit.nameLines + '">' +
+            esc(fit.text) + '</span>'
+        : '';
+
+      return '<div class="pv-seg' + (i ? ' pv-seg--after' : '') + '" style="top:' +
+          pct(seg.startSlot - run.startSlot) + ';height:' + pct(seg.endSlot - seg.startSlot) + '">' +
+        (i === 0 ? '<span class="pv-block__name">' + esc(run.label) + '</span>' : '') +
+        names + '<span class="pv-block__time">' + time + '</span>' +
+        '</div>';
+    }).join('');
+
+    return '<td class="' + cls + '" rowspan="' + rows + '"' +
       ' style="background:' + colors.bg + ';border-left:4px solid ' + colors.bar +
       ';color:' + colors.ink + '">' +
-      '<span class="pv-block__name">' + esc(run.label) + '</span>' +
-      '<span class="pv-block__time">' + esc(U.formatRange(run.startSlot, run.endSlot)) + '</span>' +
-      '<span class="pv-block__who">' + esc(who.join(', ') || 'unstaffed') + '</span>' +
+      // Sized from the fixed row height rather than stretched to the cell:
+      // positioning the cell itself would paint its fill over the table's
+      // borders.
+      '<div class="pv-run" style="height:' + (rows * ROW_PX - 3) + 'px">' + segments + '</div>' +
       // "AP1&2" is a label, not a sentence: a screen reader gets the classes
       // spelled out instead.
       '<span class="visually-hidden">' + esc(U.listSentence(spoken)) +
@@ -193,7 +299,8 @@
             continue;
           }
           if (run.startSlot === s) {
-            html += subjectCell(run, labels, cellClass('pv-block', dd, l, days[dd].lanes));
+            html += subjectCell(run, labels, cellClass('pv-block', dd, l, days[dd].lanes),
+              days[dd].lanes);
           }
           // slots after the first are absorbed by the rowspan above
         }
@@ -218,7 +325,7 @@
   }
 
   function buildOffRoom(state, labels) {
-    var groups = U.groupOffRoom(state.assignments);
+    var groups = U.groupOffRoom(state.assignments, labels);
     if (!groups.length) return '';
 
     var runs = U.SHIFT_KINDS.map(function (kind) {

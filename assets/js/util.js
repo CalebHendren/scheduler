@@ -117,8 +117,13 @@
   /* One entry per tutor, kind, room and time, carrying the days it runs. A
    * floating tutor who covers the same window on Tuesday and Thursday is one
    * line on the handout -- "Tue & Thu 12:30-2:00 PM" -- not the same line twice.
+   *
+   * Entries come out in the order the week is read: by the first day each one
+   * runs, then by start time, then by name, so the list walks Monday morning to
+   * Friday evening the way the grid above it does. `labels`, when given, is the
+   * displayNames() map the tie between two tutors is broken on.
    */
-  function groupOffRoom(assignments) {
+  function groupOffRoom(assignments, labels) {
     var order = [];
     var byKey = {};
     offRoomShifts(assignments)
@@ -139,7 +144,97 @@
         byKey[key].ids.push(a.id);
       });
     order.forEach(function (g) { g.days.sort(function (x, y) { return x - y; }); });
-    return order;
+    var name = function (id) { return String((labels && labels[id]) || id); };
+    return order.sort(function (a, b) {
+      return a.days[0] - b.days[0] || a.startSlot - b.startSlot ||
+        a.endSlot - b.endSlot || compareNames(name(a.tutorId), name(b.tutorId));
+    });
+  }
+
+  function compareNames(a, b) {
+    return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+  }
+
+  // Names in alphabetical order, the way a block that lists several reads.
+  function sortedNames(names) {
+    return (names || []).filter(Boolean).slice().sort(compareNames);
+  }
+
+  /* ---- how many tutors the center holds ----
+   * The day cap holds until the evening starts, and a smaller one after it. A
+   * tutor already on shift when the evening starts is not sent home at that
+   * moment, though: they may bleed through it and finish their shift, and so
+   * may everyone else who was in. Only someone arriving in the evening is held
+   * to the evening cap. So the limit at an evening half hour is the evening cap
+   * or the number of tutors still carrying on from before it, whichever is
+   * more -- which lets the room drain down to the evening cap as people leave,
+   * but never lets it refill past it.
+   */
+  function capRules(settings) {
+    var s = settings || {};
+    var day = Math.max(1, s.maxConcurrent || 3);
+    var evening = typeof s.eveningMaxConcurrent === 'number' ? s.eveningMaxConcurrent : day;
+    var cutoff = typeof s.eveningStartSlot === 'number' ? s.eveningStartSlot : SLOTS_PER_DAY;
+    return {
+      day: day,
+      evening: Math.max(1, evening),
+      cutoff: Math.max(0, Math.min(SLOTS_PER_DAY, Math.round(cutoff)))
+    };
+  }
+
+  function capLimit(rules, slot, carrying) {
+    return slot < rules.cutoff ? rules.day : Math.max(rules.evening, carrying);
+  }
+
+  /* Tutors at the center, and how many it may hold, for every half hour of the
+   * week. Shifts held elsewhere are left out: the caps are the center's.
+   * Returns { counts, limits }, both indexed like idx().
+   */
+  function capacity(settings, assignments) {
+    var rules = capRules(settings);
+    var counts = [], limits = [], i;
+    for (i = 0; i < TOTAL_SLOTS; i++) { counts.push(0); limits.push(rules.day); }
+
+    var rows = {};
+    mainShifts(assignments).forEach(function (a) {
+      var key = a.tutorId + '|' + a.day;
+      if (!rows[key]) {
+        rows[key] = { day: a.day, on: [] };
+        for (var s = 0; s < SLOTS_PER_DAY; s++) rows[key].on.push(false);
+      }
+      for (var t = a.startSlot; t < a.endSlot; t++) {
+        if (!rows[key].on[t]) counts[idx(a.day, t)]++;
+        rows[key].on[t] = true;
+      }
+    });
+
+    var carrying = [];
+    for (i = 0; i < TOTAL_SLOTS; i++) carrying.push(0);
+    if (rules.cutoff > 0) {
+      Object.keys(rows).forEach(function (key) {
+        var row = rows[key];
+        for (var s = rules.cutoff - 1; s < SLOTS_PER_DAY && row.on[s]; s++) {
+          if (s >= rules.cutoff) carrying[idx(row.day, s)]++;
+        }
+      });
+    }
+    for (var d = 0; d < DAYS; d++) {
+      for (var s = 0; s < SLOTS_PER_DAY; s++) {
+        limits[idx(d, s)] = capLimit(rules, s, carrying[idx(d, s)]);
+      }
+    }
+    return { counts: counts, limits: limits };
+  }
+
+  // "3 tutors at once before 5:00 PM, 2 after", for the messages that quote it.
+  function capSummary(settings) {
+    var rules = capRules(settings);
+    var tutors = function (n) { return n + ' tutor' + (n === 1 ? '' : 's'); };
+    if (rules.cutoff >= SLOTS_PER_DAY || rules.evening === rules.day) {
+      return tutors(rules.day) + ' at once';
+    }
+    return tutors(rules.day) + ' at once before ' +
+      formatMinutes(slotStartMinutes(rules.cutoff)) + ', ' + rules.evening + ' after';
   }
 
   /* ---- the tutor palette ----
@@ -240,6 +335,16 @@
     var b = slotStartMinutes(endSlot);
     var sameHalf = (a >= 720) === (b >= 720);
     return formatMinutes(a, { omitSuffix: sameHalf }) + '–' + formatMinutes(b);
+  }
+
+  // "9–12", "12:30–2": the range as it is said aloud, for a block too narrow
+  // to carry the clock readings in full. The day runs 7 AM to 8:30 PM, so a
+  // bare hour is never ambiguous on the page.
+  function formatRangeCompact(startSlot, endSlot) {
+    var bare = function (mins) {
+      return formatMinutes(mins, { omitSuffix: true }).replace(/:00$/, '');
+    };
+    return bare(slotStartMinutes(startSlot)) + '–' + bare(slotStartMinutes(endSlot));
   }
 
   function minutesToHhmm(mins) {
@@ -431,11 +536,22 @@
    * answer changes -- when cover starts or stops, and when which of a pair is
    * covered changes, so the label on a block is true for the whole of it.
    *
-   * Returns { lane, subjects, label, day, startSlot, endSlot, tutorIds }.
+   * Who is in can change inside a run without breaking it: the class is still
+   * covered, so the block stays one piece. Each stretch with the same tutors is
+   * a segment of the run instead -- "Chance, Olivia" 9-12, then "Olivia" 12-2 --
+   * which is how a student tells who they will find there, and when.
+   *
+   * Returns { lane, subjects, label, day, startSlot, endSlot, tutorIds,
+   * segments: [{ startSlot, endSlot, tutorIds }] }, every list of tutorIds in
+   * alphabetical order of name.
    */
   function coverageRuns(assignments, tutors) {
-    var masks = {}, runs = [];
-    (tutors || []).forEach(function (t) { masks[t.id] = subjectMask(t.subjects); });
+    var masks = {}, names = {}, runs = [];
+    (tutors || []).forEach(function (t) {
+      masks[t.id] = subjectMask(t.subjects);
+      names[t.id] = (String(t.firstName || '').trim() + ' ' + String(t.lastName || '').trim()).trim();
+    });
+    var byName = function (a, b) { return compareNames(names[a], names[b]) || (a < b ? -1 : a > b ? 1 : 0); };
 
     var shifts = mainShifts(assignments).filter(function (a) { return masks[a.tutorId]; });
     var lanes = coverageLanes();
@@ -466,21 +582,25 @@
         for (var s = 0; s <= SLOTS_PER_DAY; s++) {
           var here = s < SLOTS_PER_DAY ? cover[s] : null;
           if (open && (!here || here.mask !== open.mask)) {
-            runs.push(closeRun(open, laneIndex, lane, day, s));
+            runs.push(closeRun(open, laneIndex, lane, day, s, byName));
             open = null;
           }
           if (!here) continue;
-          if (!open) open = { start: s, mask: here.mask, ids: [] };
-          here.ids.forEach(function (id) {
+          var who = here.ids.slice().sort(byName);
+          if (!open) open = { start: s, mask: here.mask, ids: [], segments: [] };
+          who.forEach(function (id) {
             if (open.ids.indexOf(id) === -1) open.ids.push(id);
           });
+          var seg = open.segments[open.segments.length - 1];
+          if (seg && seg.tutorIds.join('|') === who.join('|')) seg.endSlot = s + 1;
+          else open.segments.push({ startSlot: s, endSlot: s + 1, tutorIds: who });
         }
       }
     });
     return runs;
   }
 
-  function closeRun(open, laneIndex, lane, day, endSlot) {
+  function closeRun(open, laneIndex, lane, day, endSlot, byName) {
     var subjects = lane.filter(function (i) { return open.mask & SUBJECTS[i].bit; });
     return {
       lane: laneIndex,
@@ -489,8 +609,41 @@
       day: day,
       startSlot: open.start,
       endSlot: endSlot,
-      tutorIds: open.ids
+      tutorIds: open.ids.sort(byName),
+      segments: open.segments
     };
+  }
+
+  /* A stretch too short to name everyone in it is folded into the stretch after
+   * it, and the two are read as one: their hours joined, everyone from both
+   * named. Not exact -- the second tutor may only arrive partway through -- but
+   * closer than a name cut in half. The last stretch has nothing after it, so
+   * it folds back into the one before instead. `fits(segment, index)` is the
+   * renderer's answer to whether a stretch shows all its names where it now
+   * stands.
+   */
+  function mergeCrampedSegments(segments, fits) {
+    var out = (segments || []).map(function (seg) {
+      return { startSlot: seg.startSlot, endSlot: seg.endSlot, tutorIds: seg.tutorIds.slice() };
+    });
+    var i = 0;
+    while (i < out.length - 1) {
+      if (fits(out[i], i)) { i++; continue; }
+      var next = out[i + 1];
+      next.tutorIds.forEach(function (id) {
+        if (out[i].tutorIds.indexOf(id) === -1) out[i].tutorIds.push(id);
+      });
+      out[i].endSlot = next.endSlot;
+      out.splice(i + 1, 1);
+    }
+    while (out.length > 1 && !fits(out[out.length - 1], out.length - 1)) {
+      var last = out.pop(), prev = out[out.length - 1];
+      last.tutorIds.forEach(function (id) {
+        if (prev.tutorIds.indexOf(id) === -1) prev.tutorIds.push(id);
+      });
+      prev.endSlot = last.endSlot;
+    }
+    return out;
   }
 
   // Half hours a week each lane is covered for, indexed like coverageLanes().
@@ -589,13 +742,18 @@
    * rather than see. A partial block keeps the lane's hue and takes a lighter
    * cut of it: still plainly that lane, plainly less of it.
    */
-  var PARTIAL_TINT = 0.42;
+  var PARTIAL_TINT = 0.30;
 
   function coverageColors(run, dark) {
     var lane = coverageLanes()[run.lane] || [];
     var hue = subjectHue(lane.length ? lane[0] : 0);
-    if (!run.subjects || run.subjects.length >= lane.length) return shadeBlock(hue, dark);
-    return shadeBlock(mix(hue, SURFACE_LIGHT, PARTIAL_TINT), dark);
+    var full = shadeBlock(hue, dark);
+    if (!run.subjects || run.subjects.length >= lane.length) return full;
+    // Only the fill lightens: the bar keeps the lane's own bold colour, so the
+    // block still reads as that lane at a glance.
+    var partial = shadeBlock(mix(hue, SURFACE_LIGHT, PARTIAL_TINT), dark);
+    partial.bar = full.bar;
+    return partial;
   }
 
   // Past the end of the list a color has to come round again, and the repeat is
@@ -909,10 +1067,17 @@
     roomLabel: roomLabel,
     daysLabel: daysLabel,
     groupOffRoom: groupOffRoom,
+    compareNames: compareNames,
+    sortedNames: sortedNames,
+    capRules: capRules,
+    capLimit: capLimit,
+    capacity: capacity,
+    capSummary: capSummary,
     coverageLanes: coverageLanes,
     coverageLabel: coverageLabel,
     coverageRuns: coverageRuns,
     coverageLaneHours: coverageLaneHours,
+    mergeCrampedSegments: mergeCrampedSegments,
     laneLabel: laneLabel,
     PALETTE: PALETTE,
     SURFACE_LIGHT: SURFACE_LIGHT,
@@ -924,6 +1089,7 @@
     slotEndMinutes: slotEndMinutes,
     formatMinutes: formatMinutes,
     formatRange: formatRange,
+    formatRangeCompact: formatRangeCompact,
     minutesToHhmm: minutesToHhmm,
     hhmmToSlot: hhmmToSlot,
     hoursLabel: hoursLabel,

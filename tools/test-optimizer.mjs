@@ -15,6 +15,8 @@ const SOURCES = [
   'assets/js/store.js',
   'assets/js/csv.js',
   'assets/js/optimizer.js',
+  // Placement checks only; nothing in it touches the DOM until it renders.
+  'assets/js/calendar.js',
   'tools/tests.js'
 ];
 

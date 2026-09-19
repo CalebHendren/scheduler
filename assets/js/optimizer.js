@@ -11,6 +11,8 @@
   var W_SLOT = 2;       // per scheduled half hour
   var W_BLOCK = 8;      // per block, to discourage fragmentation
   var W_EQUITY = 2.0;   // per hour^2 away from an even split
+  var W_RETURN = 70;    // per time a tutor is sent away and asked back the same day
+  var W_IDLE = 6;       // per half hour they spend waiting to come back
 
   function mulberry32(seed) {
     var a = seed >>> 0;
@@ -25,7 +27,6 @@
   function buildContext(state) {
     var s = state.settings;
     var tutors = state.tutors.map(function (t, i) {
-      var perDay = typeof t.maxHoursPerDay === 'number' ? t.maxHoursPerDay : s.maxHoursPerDay;
       return {
         index: i,
         id: t.id,
@@ -33,7 +34,6 @@
         avail: t.availability,
         maxSlots: Math.round((t.maxHoursPerWeek || 0) * 2),
         minSlots: Math.round((t.minHoursPerWeek || 0) * 2),
-        maxDaySlots: Math.round((perDay || 24) * 2),
         availSlots: t.availability.reduce(function (n, v) { return n + (v ? 1 : 0); }, 0)
       };
     });
@@ -42,7 +42,7 @@
       tutors: tutors,
       byId: tutors.reduce(function (m, t) { m[t.id] = t; return m; }, {}),
       minShift: Math.max(1, s.minShiftSlots || 1),
-      maxConcurrent: Math.max(1, s.maxConcurrent || 2),
+      caps: U.capRules(s),
       maxRun: Math.max(1, Math.round((s.breakAfterHours || 6) * 2) - 1),
       breakSlots: Math.max(1, s.breakSlots || 1),
       budgetSlots: s.weeklyBudgetEnabled ? Math.round((s.weeklyBudgetHours || 0) * 2) : Infinity,
@@ -58,8 +58,9 @@
       blocks: [],
       slotTutors: [],
       tutorSlots: [],
-      tutorDaySlots: [],
       tutorDayMap: [],
+      centerMap: [],
+      returnPenalty: [],
       assignedSlots: 0,
       coreScore: 0
     };
@@ -67,16 +68,21 @@
     for (i = 0; i < U.TOTAL_SLOTS; i++) sol.slotTutors.push([]);
     for (i = 0; i < ctx.tutors.length; i++) {
       sol.tutorSlots.push(0);
-      sol.tutorDaySlots.push([0, 0, 0, 0, 0]);
-      var days = [];
-      for (var d = 0; d < U.DAYS; d++) {
-        var row = new Array(U.SLOTS_PER_DAY);
-        for (var s = 0; s < U.SLOTS_PER_DAY; s++) row[s] = 0;
-        days.push(row);
-      }
-      sol.tutorDayMap.push(days);
+      sol.tutorDayMap.push(emptyWeek());
+      sol.centerMap.push(emptyWeek());
+      sol.returnPenalty.push([0, 0, 0, 0, 0]);
     }
     return sol;
+  }
+
+  function emptyWeek() {
+    var days = [];
+    for (var d = 0; d < U.DAYS; d++) {
+      var row = new Array(U.SLOTS_PER_DAY);
+      for (var s = 0; s < U.SLOTS_PER_DAY; s++) row[s] = 0;
+      days.push(row);
+    }
+    return days;
   }
 
   function slotScore(ctx, occupants) {
@@ -123,6 +129,95 @@
 
   function totalScore(sol) { return sol.coreScore - equityPenalty(sol); }
 
+  /* ---- continuous shifts ----
+   * A tutor should only have to leave and come back when something makes them:
+   * a class of their own, which is a hole in the availability they handed in,
+   * or the break the six-hour rule demands. Any other gap between two of their
+   * shifts on one day is them hanging around campus unpaid, and costs a flat
+   * amount for being sent away plus a little for every half hour of waiting.
+   * A gap the break rule forced is charged only for what it runs past the
+   * break itself.
+   *
+   * `addStart`/`addEnd` count a block as worked without placing it, which is
+   * how a candidate is priced before it is added. Returns one entry per gap:
+   * { start, end, cost }.
+   */
+  function gapCosts(ctx, t, day, row, addStart, addEnd) {
+    var runs = [], open = -1;
+    for (var s = 0; s <= U.SLOTS_PER_DAY; s++) {
+      var on = s < U.SLOTS_PER_DAY && (row[s] || (s >= addStart && s < addEnd));
+      if (on && open === -1) open = s;
+      else if (!on && open !== -1) { runs.push([open, s]); open = -1; }
+    }
+
+    var gaps = [];
+    for (var i = 1; i < runs.length; i++) {
+      var from = runs[i - 1][1], to = runs[i][0];
+      var inClass = false;
+      for (var g = from; g < to; g++) {
+        if (!t.avail[U.idx(day, g)]) { inClass = true; break; }
+      }
+      var gap = to - from;
+      var joined = (runs[i - 1][1] - runs[i - 1][0]) + gap + (runs[i][1] - runs[i][0]);
+      var cost = inClass ? 0
+        : joined > ctx.maxRun ? W_IDLE * Math.max(0, gap - ctx.breakSlots)
+        : W_RETURN + W_IDLE * gap;
+      gaps.push({ start: from, end: to, cost: cost });
+    }
+    return gaps;
+  }
+
+  function returnPenaltyOf(ctx, t, day, row, addStart, addEnd) {
+    return gapCosts(ctx, t, day, row, addStart, addEnd)
+      .reduce(function (n, g) { return n + g.cost; }, 0);
+  }
+
+  function refreshReturnPenalty(sol, tutorIndex, day) {
+    var ctx = sol.ctx;
+    var next = returnPenaltyOf(ctx, ctx.tutors[tutorIndex], day,
+      sol.tutorDayMap[tutorIndex][day], -1, -1);
+    sol.coreScore += sol.returnPenalty[tutorIndex][day] - next;
+    sol.returnPenalty[tutorIndex][day] = next;
+  }
+
+  /* ---- the center's caps ----
+   * U.capRules has the rule; this is the same thing read off the solver's own
+   * maps, so a candidate can be priced without building assignments.
+   *
+   * Whether a tutor has been at the center without a break from the half hour
+   * before the evening through `slot`, optionally counting a block not yet
+   * placed.
+   */
+  function carriesThrough(sol, tutorIndex, day, slot, addStart, addEnd) {
+    var cutoff = sol.ctx.caps.cutoff;
+    if (cutoff <= 0) return false;
+    var row = sol.centerMap[tutorIndex][day];
+    for (var s = cutoff - 1; s <= slot; s++) {
+      if (!row[s] && !(s >= addStart && s < addEnd)) return false;
+    }
+    return true;
+  }
+
+  function limitAt(sol, day, slot) {
+    var caps = sol.ctx.caps;
+    if (slot < caps.cutoff) return caps.day;
+    var list = sol.slotTutors[U.idx(day, slot)];
+    var carrying = 0;
+    for (var k = 0; k < list.length; k++) {
+      if (carriesThrough(sol, list[k], day, slot, -1, -1)) carrying++;
+    }
+    return U.capLimit(caps, slot, carrying);
+  }
+
+  // Half hours on a day with more tutors at the center than it may hold.
+  function overCapCount(sol, day) {
+    var n = 0;
+    for (var s = 0; s < U.SLOTS_PER_DAY; s++) {
+      if (sol.slotTutors[U.idx(day, s)].length > limitAt(sol, day, s)) n++;
+    }
+    return n;
+  }
+
   /* ---- feasibility ----------------------------------------------------- */
 
   function maxRunWith(row, start, end, add) {
@@ -143,14 +238,24 @@
     if (len < ctx.minShift) return false;
     if (start < 0 || end > U.SLOTS_PER_DAY) return false;
     if (sol.tutorSlots[tutorIndex] + len > t.maxSlots) return false;
-    if (sol.tutorDaySlots[tutorIndex][day] + len > t.maxDaySlots) return false;
     if (sol.assignedSlots + len > ctx.budgetSlots) return false;
 
     var row = sol.tutorDayMap[tutorIndex][day];
     for (var s = start; s < end; s++) {
       if (!t.avail[U.idx(day, s)]) return false;
       if (row[s]) return false;
-      if (sol.slotTutors[U.idx(day, s)].length >= ctx.maxConcurrent) return false;
+    }
+    for (s = start; s < end; s++) {
+      var list = sol.slotTutors[U.idx(day, s)];
+      if (s < ctx.caps.cutoff) {
+        if (list.length >= ctx.caps.day) return false;
+        continue;
+      }
+      var carrying = carriesThrough(sol, tutorIndex, day, s, start, end) ? 1 : 0;
+      for (var k = 0; k < list.length; k++) {
+        if (carriesThrough(sol, list[k], day, s, -1, -1)) carrying++;
+      }
+      if (list.length + 1 > U.capLimit(ctx.caps, s, carrying)) return false;
     }
     if (maxRunWith(row, start, end, true) > ctx.maxRun) return false;
     return true;
@@ -175,11 +280,12 @@
         sol.coreScore -= slotScore(ctx, sol.slotTutors[i]);
         sol.slotTutors[i].push(block.tutorIndex);
         sol.coreScore += slotScore(ctx, sol.slotTutors[i]);
+        sol.centerMap[block.tutorIndex][block.day][s] = 1;
       }
       row[s] = 1;
     }
+    refreshReturnPenalty(sol, block.tutorIndex, block.day);
     sol.tutorSlots[block.tutorIndex] += len;
-    sol.tutorDaySlots[block.tutorIndex][block.day] += len;
     sol.assignedSlots += len;
     if (!block.offRoom) sol.coreScore += len * W_SLOT - W_BLOCK;
     sol.blocks.push(block);
@@ -197,11 +303,12 @@
         var at = sol.slotTutors[i].indexOf(block.tutorIndex);
         if (at !== -1) sol.slotTutors[i].splice(at, 1);
         sol.coreScore += slotScore(ctx, sol.slotTutors[i]);
+        sol.centerMap[block.tutorIndex][block.day][s] = 0;
       }
       row[s] = 0;
     }
+    refreshReturnPenalty(sol, block.tutorIndex, block.day);
     sol.tutorSlots[block.tutorIndex] -= len;
-    sol.tutorDaySlots[block.tutorIndex][block.day] -= len;
     sol.assignedSlots -= len;
     if (!block.offRoom) sol.coreScore -= len * W_SLOT - W_BLOCK;
     var bi = sol.blocks.indexOf(block);
@@ -221,7 +328,10 @@
       sol.slotTutors[i].pop();
       gain += after - before;
     }
-    return gain + (end - start) * W_SLOT - W_BLOCK;
+    var returns = returnPenaltyOf(ctx, ctx.tutors[tutorIndex], day,
+      sol.tutorDayMap[tutorIndex][day], start, end);
+    return gain + (end - start) * W_SLOT - W_BLOCK -
+      (returns - sol.returnPenalty[tutorIndex][day]);
   }
 
   function makeBlock(tutorIndex, day, start, end, locked, id, offRoom) {
@@ -456,11 +566,33 @@
     return { removals: removals, additions: additions };
   }
 
+  /* Taking away the half hour before the evening can turn a tutor who was
+   * carrying on into one arriving in it, and so put a day over the evening cap
+   * without anything being added there. canAdd only sees additions, so the days
+   * a move touches are counted before and after it.
+   */
+  function touchedDays(move) {
+    var days = [];
+    move.removals.concat(move.additions).forEach(function (b) {
+      if (days.indexOf(b.day) === -1) days.push(b.day);
+    });
+    return days;
+  }
+
+  function overOn(sol, days) {
+    var n = 0;
+    for (var i = 0; i < days.length; i++) n += overCapCount(sol, days[i]);
+    return n;
+  }
+
   function tryMove(sol, move) {
     var before = totalScore(sol);
     var undone = [];
     var added = [];
     var i;
+    var days = move.removals.length && sol.ctx.caps.cutoff < U.SLOTS_PER_DAY
+      ? touchedDays(move) : null;
+    var overBefore = days ? overOn(sol, days) : 0;
 
     for (i = 0; i < move.removals.length; i++) {
       applyRemove(sol, move.removals[i]);
@@ -474,6 +606,7 @@
       applyAdd(sol, a);
       added.push(a);
     }
+    if (ok && days && overOn(sol, days) > overBefore) ok = false;
 
     if (!ok) {
       for (i = added.length - 1; i >= 0; i--) applyRemove(sol, added[i]);
@@ -691,6 +824,9 @@
     var offRoomSlots = U.offRoomShifts(assignments).reduce(function (n, a) {
       return n + (a.endSlot - a.startSlot);
     }, 0);
+    var cap = U.capacity(state.settings, assignments);
+    var overSlots = 0;
+    for (var o = 0; o < U.TOTAL_SLOTS; o++) if (cap.counts[o] > cap.limits[o]) overSlots++;
     return {
       totalHours: sol.assignedSlots / 2,
       offRoomHours: offRoomSlots / 2,
@@ -701,9 +837,8 @@
       avgSubjects: covered ? subjectSum / covered : 0,
       score: totalScore(sol),
       perTutor: perTutor,
-      overCapacitySlots: sol.slotTutors.reduce(function (n, list) {
-        return n + (list.length > ctx.maxConcurrent ? 1 : 0);
-      }, 0)
+      overCapacitySlots: overSlots,
+      returnTrips: returnTrips(state, assignments).length
     };
   }
 
@@ -739,8 +874,11 @@
       });
     });
 
+    // Checked with the util's reading of the cap rather than the solver's, so
+    // the two have to agree for a schedule to pass.
+    var cap = U.capacity(state.settings, assignments);
     for (i = 0; i < U.TOTAL_SLOTS; i++) {
-      if (sol.slotTutors[i].length > ctx.maxConcurrent) {
+      if (cap.counts[i] > cap.limits[i]) {
         var manual = assignments.some(function (a) {
           return a.overCapacity && U.idx(a.day, a.startSlot) <= i && U.idx(a.day, a.endSlot) > i;
         });
@@ -753,9 +891,6 @@
         problems.push(t.id + ' exceeds their weekly hour cap');
       }
       for (var day = 0; day < U.DAYS; day++) {
-        if (sol.tutorDaySlots[t.index][day] > t.maxDaySlots) {
-          problems.push(t.id + ' exceeds their daily hour cap on day ' + day);
-        }
         var run = 0;
         var row = sol.tutorDayMap[t.index][day];
         for (var slot = 0; slot < U.SLOTS_PER_DAY; slot++) {
@@ -775,6 +910,24 @@
     }
 
     return problems;
+  }
+
+  /* Every time a tutor is sent away mid-day and asked back with neither a class
+   * nor a required break in between -- what the continuity penalty is there to
+   * prevent. Returns { tutorId, day, start, end } for each.
+   */
+  function returnTrips(state, assignments) {
+    var ctx = buildContext(state);
+    var sol = solutionFromAssignments(ctx, assignments);
+    var trips = [];
+    ctx.tutors.forEach(function (t) {
+      for (var day = 0; day < U.DAYS; day++) {
+        gapCosts(ctx, t, day, sol.tutorDayMap[t.index][day], -1, -1).forEach(function (g) {
+          if (g.cost >= W_RETURN) trips.push({ tutorId: t.id, day: day, start: g.start, end: g.end });
+        });
+      }
+    });
+    return trips;
   }
 
   /*
@@ -868,7 +1021,8 @@
   TS.optimizer = {
     WEIGHTS: {
       cover1: W_COVER1, cover2: W_COVER2, coverN: W_COVERN,
-      subject: W_SUBJECT, dup: W_DUP, slot: W_SLOT, block: W_BLOCK, equity: W_EQUITY
+      subject: W_SUBJECT, dup: W_DUP, slot: W_SLOT, block: W_BLOCK, equity: W_EQUITY,
+      returnTrip: W_RETURN, idle: W_IDLE
     },
     GAP_REASONS: GAP_REASONS,
     buildContext: buildContext,
@@ -878,6 +1032,7 @@
     validate: validate,
     stats: stats,
     analyzeGaps: analyzeGaps,
+    returnTrips: returnTrips,
     slotScore: slotScore,
     mergeAdjacent: mergeAdjacent,
     mulberry32: mulberry32
