@@ -584,6 +584,20 @@
     return shadeBlock(subjectHue(lane && lane.length ? lane[0] : 0), dark);
   }
 
+  /* An hour with only half of a paired lane on offer is not the same hour as
+   * one with both, and the label alone makes that a thing you have to read
+   * rather than see. A partial block keeps the lane's hue and takes a lighter
+   * cut of it: still plainly that lane, plainly less of it.
+   */
+  var PARTIAL_TINT = 0.42;
+
+  function coverageColors(run, dark) {
+    var lane = coverageLanes()[run.lane] || [];
+    var hue = subjectHue(lane.length ? lane[0] : 0);
+    if (!run.subjects || run.subjects.length >= lane.length) return shadeBlock(hue, dark);
+    return shadeBlock(mix(hue, SURFACE_LIGHT, PARTIAL_TINT), dark);
+  }
+
   // Past the end of the list a color has to come round again, and the repeat is
   // drawn with a diagonal hatch so the pair stays distinct anyway.
   function usesHatch(colorIndex) { return colorIndex >= PALETTE.length; }
@@ -926,6 +940,7 @@
     contrastRatio: contrastRatio,
     blockColors: blockColors,
     laneColors: laneColors,
+    coverageColors: coverageColors,
     usesHatch: usesHatch,
     deltaE: deltaE,
     colorGap: colorGap,

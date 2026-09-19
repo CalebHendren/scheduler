@@ -138,7 +138,7 @@
   }
 
   function subjectCell(run, labels, cls) {
-    var colors = U.laneColors(U.coverageLanes()[run.lane], false);
+    var colors = U.coverageColors(run, false);
     var spoken = run.subjects.map(function (i) { return U.SUBJECTS[i].label; });
     var who = run.tutorIds.map(function (id) {
       var tutor = TS.store.getTutor(id);
