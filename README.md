@@ -26,7 +26,10 @@ it.
    who between them handed in 80 hours of availability — a couple offering 15 or so, most a
    few afternoons, one or two a single shift.
 3. For each tutor: first and last name, the class checkboxes, their approved weekly hours
-   (20 by default), and their availability.
+   (20 by default), and their availability. In the availability grid each time sits on the line
+   where it starts, so painting from the 9:00 line to the 1:00 line is 9:00 to 1:00; the line
+   under the grid names the exact half hour under the pointer, and the whole stretch while you
+   drag.
 4. Fill the week in whichever way suits you — see [Three ways to place a
    shift](#three-ways-to-place-a-shift).
 5. Adjust by hand — drag a block to move it, drag its edge to resize, lock the ones
@@ -366,7 +369,7 @@ is not counted against you.
 - Fifteen colors, so a normal roster never repeats one. Past fifteen tutors a color has to come
   round again, and the repeat carries a diagonal hatch so the pair stays distinct.
 - The whole app is keyboard operable. In the availability painter, move with the arrow keys and
-  toggle with Space. On a scheduled block, arrow keys move it, Shift+arrows resize it, `L`
+  toggle with Space; the time of the focused half hour is read out as you move. On a scheduled block, arrow keys move it, Shift+arrows resize it, `L`
   locks it and Delete removes it; Tab from the block reaches its padlock. Placing a shift
   without a mouse is what **Add shift** above the grid is for.
 - Text contrast is checked automatically in CI, in both light and dark themes, for every color
