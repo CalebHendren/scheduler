@@ -174,6 +174,13 @@ html, body {
 .pv-swatch { display: inline-block; width: 16px; height: 10px; border: 1px solid #6B7789; }
 .pv-legend__subjects { color: #3A4553; font-weight: 700; font-size: 7pt; }
 
+/* Each 7 weeks starts a sheet of its own, with the inset the print root only
+   gives the first page. */
+.pv-period + .pv-period {
+  padding-top: 0.4in;
+  page-break-before: always;
+}
+
 /* ---- coverage by class -------------------------------------------------
    Page one over again on a sheet of its own, with the week read the other way
    round: one lane per class rather than per tutor, so a student can find their
@@ -201,41 +208,9 @@ html, body {
 .pv-seg > .pv-block__who {
   display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
   line-height: 10px;
-}
-.pv-seg > .pv-block__time { line-height: 10px; }
-.pv-seg--after { border-top: 1px solid rgba(20, 24, 31, .22); padding-top: 1px; }
-
-/* ---- text listing ------------------------------------------------------ */
-
-/* Each 7 weeks starts a sheet of its own, with the inset the print root only
-   gives the first page. */
-.pv-period + .pv-period {
-  padding-top: 0.4in;
-  page-break-before: always;
-}
-
-.pv-coverage {
-  /* The page inset above is the print root's padding, which lands once at the
-     top of page one; this page is its own sheet and needs its own. */
-  padding-top: 0.4in;
-  page-break-before: always;
-}
-/* A class block carries a short code rather than a name, so the tutors under
-   it are what the width is actually spent on. */
-.pv-block__who { display: block; font-size: 6.5pt; line-height: 1.15; }
-/* Where the tutors change inside a class block: a faint rule at that hour, and
-   the new stretch's hours and names under it. */
-/* Exactly as tall as the rows the block spans (set in printview.js), so its
-   text can never stretch them: the grid stays to scale. */
-.pv-run { position: relative; overflow: hidden; }
-.pv-nowrap { white-space: nowrap; }
-/* A stretch is boxed to its own hours. printview.js has already worked out
-   how many whole lines of names fit alongside the class code and the time,
-   and the names are clamped to that. */
-.pv-seg { position: absolute; left: 0; right: 0; overflow: hidden; }
-.pv-seg > .pv-block__who {
-  display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
-  line-height: 10px;
+  /* A name wider than a narrow lane wraps inside itself rather than being
+     cut off at the lane's edge, as the downloaded PDF does. */
+  overflow-wrap: anywhere;
 }
 .pv-seg > .pv-block__time { line-height: 10px; }
 .pv-seg--after { border-top: 1px solid rgba(20, 24, 31, .22); padding-top: 1px; }

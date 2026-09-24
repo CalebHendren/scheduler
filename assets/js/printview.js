@@ -192,6 +192,15 @@
     var lines = 1, used = 0;
     text.split(' ').forEach(function (word) {
       var w = word.length * NAME_CHAR_PX;
+      // A name wider than the lane breaks inside itself (print.css), on a
+      // line of its own and as many more as it takes.
+      if (w > width) {
+        if (used) lines++;
+        var whole = Math.ceil(w / width);
+        lines += whole - 1;
+        used = w - (whole - 1) * width;
+        return;
+      }
       var add = used ? w + NAME_CHAR_PX : w;
       if (used && used + add > width) { lines++; used = w; } else used += add;
     });
@@ -229,8 +238,10 @@
     // on its hour however tall the rows come out.
     var pct = function (slots) { return (100 * slots / rows).toFixed(3) + '%'; };
     function layout(seg, i) {
+      // The first stretch shares its box with the class code; each later one
+      // starts under its rule (.pv-seg--after, 1px border and 1px padding).
       var lines = Math.floor(((seg.endSlot - seg.startSlot) * rowPx - 3 -
-        (i === 0 ? LABEL_PX : 0)) / LINE_PX);
+        (i === 0 ? LABEL_PX : 2)) / LINE_PX);
 
       var full = U.formatRange(seg.startSlot, seg.endSlot);
       var range = full.split('–');
