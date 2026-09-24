@@ -1,13 +1,13 @@
 # Life Science Tutor Schedule — Chattanooga State
 
-A weekly tutoring schedule builder for the Student Success Center (IMC 270) at Chattanooga
+A weekly tutoring schedule builder for the Academic Success Center (IMC 270) at Chattanooga
 State Community College. It ships set up for the Life Science classes — Biology, Microbiology,
 Anatomy & Physiology I (AP1) and Anatomy & Physiology II (AP2) — and you can
 [add your own](#the-classes-you-tutor).
 
 Enter your tutors, check the classes each one can tutor, paint their availability, and press
 **Auto-optimize**. You get a Monday–Friday, 7:00 AM–8:30 PM calendar you can print, hand out,
-and post — with a QR code to tutor.com for the hours nobody is on shift. Shifts held somewhere
+and post — with a QR code students can scan to book a tutoring appointment. Shifts held somewhere
 other than IMC 270 — **Floating Embedded Tutors** sitting in a class, **Open Labs** in another
 room — are [listed beside the calendar](#embedded-classes-and-open-labs) rather than drawn in
 it.
@@ -25,8 +25,9 @@ it.
    or **Add tutor** to start your own. The sample is ten tutors, each approved for 20 hours,
    who between them handed in 80 hours of availability — a couple offering 15 or so, most a
    few afternoons, one or two a single shift.
-3. For each tutor: first and last name, the class checkboxes, their approved weekly hours
-   (20 by default), and their availability. In the availability grid each time sits on the line
+3. For each tutor: first and last name, their email, the class checkboxes, their approved
+   weekly hours (20 by default), and their availability. The email is never printed; **Email
+   all** in the Tutors panel opens one message to every tutor, blind copied. In the availability grid each time sits on the line
    where it starts, so painting from the 9:00 line to the 1:00 line is 9:00 to 1:00; the line
    under the grid names the exact half hour under the pointer, and the whole stretch while you
    drag.
@@ -250,9 +251,10 @@ Because storage is per-browser, use **Export** to move between machines or keep 
 
 ### The CSV format
 
-`First, Last, BIO, MICRO, AP1, AP2, MaxHoursPerWeek, MinHoursPerWeek, Availability, Notes`
+`First, Last, Email, BIO, MICRO, AP1, AP2, MaxHoursPerWeek, MinHoursPerWeek, Availability, Notes`
 
-A blank `MaxHoursPerWeek` takes the schedule's default. A `MaxHoursPerDay` column from an older
+`Email` is optional, and a file without the column still imports. A blank `MaxHoursPerWeek`
+takes the schedule's default. A `MaxHoursPerDay` column from an older
 export is ignored.
 
 One column per class, in the order they appear under **Schedule settings → Classes**, headed by
@@ -279,18 +281,22 @@ Two buttons, for two different needs:
 
 - **Print / Save as PDF** — the one to use for anything you hand out or post. It prints from a
   real HTML table with proper row and column headers, so the PDF Chrome and Edge produce has
-  selectable text, keeps its table structure, and carries a document language. Four pages: the
-  calendar, the notes, the QR code and the legend on page 1; a plain-text listing of every
-  shift, in two columns, on page 2; **Coverage by class** on page 3; and the listing again on
-  page 4.
-- **Download PDF** — one click, no print dialog, drawn directly with jsPDF. Same four pages,
+  selectable text, keeps its table structure, and carries a document language. Two pages: the
+  calendar, the notes, the QR code and the legend on page 1, and **Coverage by class** on
+  page 2 — printed double sided, one sheet with a calendar on each face.
+- **Download PDF** — one click, no print dialog, drawn directly with jsPDF. Same pages,
   same landscape layout and real text (nothing is a screenshot), but jsPDF does not emit a
   tagged structure tree, so it is the convenience option rather than the accessible one.
 
+Tick **Include text listing** beside the two buttons to add a plain-text listing of every
+shift, in two columns, after each calendar. That makes four pages — calendar, listing, coverage
+by class, listing — so a double-sided print gives a sheet with a calendar on one face and the
+listing on the other, whichever sheet someone picks up. It is off by default.
+
 ### Coverage by class
 
-Page 3 is the same week read the other way round. The schedule is written tutor by tutor, but
-the question a student turns up with is *when can I get help with Micro?* — so page 3 gives
+The by-class page is the same week read the other way round. The schedule is written tutor by
+tutor, but the question a student turns up with is *when can I get help with Micro?* — so it gives
 each class a lane of its own and shows the stretches it is covered for, with the tutors who are
 in written inside.
 
@@ -321,15 +327,12 @@ says `AP2` rather than pretending otherwise.
 Only hours at the center count. An embedded tutor sitting in a class across campus is their
 time but not the center's cover, and is left out here exactly as it is left out of the grid.
 
-The listing from page 2 repeats on page 4, so a double-sided print gives a sheet with a
-calendar on one face and the shift listing on the other, whichever sheet someone picks up.
-
 Both are landscape US Letter. Printing always uses the light theme even if you are working in
 dark mode. The print stylesheet sets a zero `@page` margin and insets the handout itself, which
 is what keeps Chrome and Edge from stamping the document title across the top of the page and
 the page URL across the bottom — there is no CSS switch for those, only the margin they are
-drawn into. Both carry the semester, the location and contact, the QR code, a tutor legend, the
-important notes, and a plain-text listing of every shift.
+drawn into. Both carry the semester, the location and contact, the QR code, a tutor legend and
+the important notes, plus the plain-text listing when it is turned on.
 
 ### What goes on the handout
 
@@ -340,6 +343,11 @@ every handout, and appear in the app header.
 The notes print in a box under the grid — closure dates, the last day of tutoring, anything
 else people need to read off the wall. The default text is the fall 2026 closure schedule; edit
 it for your term.
+
+The **Appointment QR code** settings hold the link the code opens — the Slate appointment form
+by default, used exactly as typed — and the heading and caption printed beside it. The link
+itself is not printed: it is long and carries an id nobody would type, so the code is what gets
+used. On screen the code and the **Open the booking page** button both open it.
 
 **Location** names the room the calendar itself is about. Shifts held elsewhere carry their own
 room and print in the **Floating Embedded Tutors** and **Open Labs** lines under the grid, so

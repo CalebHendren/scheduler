@@ -27,19 +27,15 @@
   function windowsFromAvailability(avail) {
     var out = [];
     for (var d = 0; d < U.DAYS; d++) {
-      var start = null;
-      for (var s = 0; s <= U.SLOTS_PER_DAY; s++) {
-        var on = s < U.SLOTS_PER_DAY && avail[U.idx(d, s)];
-        if (on && start === null) start = s;
-        else if (!on && start !== null) { out.push({ day: d, start: start, end: s }); start = null; }
-      }
+      U.availabilityRuns(avail, d).forEach(function (r) {
+        out.push({ day: d, start: r[0], end: r[1] });
+      });
     }
     return out;
   }
 
   function availabilityFromWindows(windows) {
-    var a = new Array(U.TOTAL_SLOTS);
-    for (var i = 0; i < U.TOTAL_SLOTS; i++) a[i] = 0;
+    var a = U.emptyAvailability();
     windows.forEach(function (w) {
       if (w.end <= w.start) return;
       for (var s = Math.max(0, w.start); s < Math.min(U.SLOTS_PER_DAY, w.end); s++) {
@@ -97,7 +93,10 @@
         '<div class="roster__meta">' +
         scheduled + ' of ' + t.maxHoursPerWeek + ' h scheduled · ' +
         availabilityHours(t.availability) + ' h available' +
-        '</div>';
+        '</div>' +
+        (t.email
+          ? '<div class="roster__email"><a href="mailto:' + esc(t.email) + '">' + esc(t.email) + '</a></div>'
+          : '');
       row.appendChild(info);
 
       var selected = handlers.selectedId === t.id;
@@ -133,8 +132,8 @@
       edit.addEventListener('click', function () { handlers.onEdit(t.id); });
       var del = el('button', {
         type: 'button', class: 'btn btn--small btn--danger',
-        'aria-label': 'Remove ' + full
-      }, 'Remove');
+        'aria-label': 'Remove ' + full, title: 'Remove ' + full
+      }, '×');
       del.addEventListener('click', function () { handlers.onRemove(t.id); });
 
       actions.appendChild(pick);
@@ -315,6 +314,7 @@
     var working = {
       firstName: tutor ? tutor.firstName : '',
       lastName: tutor ? tutor.lastName : '',
+      email: tutor ? tutor.email || '' : '',
       subjects: subjects,
       maxHoursPerWeek: tutor ? tutor.maxHoursPerWeek : settings.defaultMaxHours,
       minHoursPerWeek: tutor ? tutor.minHoursPerWeek : 0,
@@ -338,6 +338,10 @@
             '<input type="text" id="f-last" value="' + esc(working.lastName) + '">' +
             '<p class="field__hint">Used only if two tutors share a first name.</p></div>' +
         '</div>' +
+        '<div class="field"><label for="f-email">Email</label>' +
+          '<input type="email" id="f-email" value="' + esc(working.email) + '"' +
+          ' placeholder="name@chattanoogastate.edu" autocomplete="off">' +
+          '<p class="field__hint">Not printed. Used by “Email all” in the Tutors panel.</p></div>' +
         '<div class="field"><fieldset><legend>Classes they can tutor</legend>' +
           '<div class="subject-grid">' +
             U.SUBJECTS.map(function (s) {
@@ -607,6 +611,7 @@
       var payload = {
         firstName: first,
         lastName: dialog.querySelector('#f-last').value.trim(),
+        email: dialog.querySelector('#f-email').value.trim(),
         subjects: working.subjects,
         maxHoursPerWeek: parseFloat(dialog.querySelector('#f-max').value) || 0,
         minHoursPerWeek: working.minHoursPerWeek,
@@ -628,10 +633,6 @@
     renderRoster: renderRoster,
     openTutorDialog: openTutorDialog,
     openShiftDialog: openShiftDialog,
-    windowsFromAvailability: windowsFromAvailability,
-    availabilityFromWindows: availabilityFromWindows,
-    availabilityHours: availabilityHours,
-    closeDialog: closeDialog,
     esc: esc
   };
 })(typeof window !== 'undefined' ? window : globalThis);

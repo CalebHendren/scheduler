@@ -27,28 +27,41 @@
   }
 
   function drawQr(pdf, text, x, y, size) {
-    var grid = TS.qr.modules(text);
-    if (!grid) return;
-    var count = grid.length;
-    var cell = size / count;
+    var code = TS.qr.runs(text);
+    if (!code) return;
+    var cell = size / code.count;
 
     pdf.setFillColor(255, 255, 255);
     pdf.rect(x - 3, y - 3, size + 6, size + 6, 'F');
     pdf.setFillColor(0, 0, 0);
+    code.runs.forEach(function (run) {
+      pdf.rect(x + run[1] * cell, y + run[0] * cell, run[2] * cell, cell, 'F');
+    });
+  }
 
-    // Horizontal runs rather than one rect per module keeps the PDF small and
-    // fully vector, so the code stays scannable at any zoom or print size.
-    for (var r = 0; r < count; r++) {
-      var runStart = -1;
-      for (var c = 0; c <= count; c++) {
-        var on = c < count && grid[r][c];
-        if (on && runStart === -1) runStart = c;
-        else if (!on && runStart !== -1) {
-          pdf.rect(x + runStart * cell, y + r * cell, (c - runStart) * cell, cell, 'F');
-          runStart = -1;
-        }
-      }
-    }
+  /* A block's box, in either calendar: the tinted fill, a thin border, and
+   * the solid bar down its left edge that carries the colour in greyscale. */
+  function drawBlockBox(pdf, colors, bx, by, bw, bh) {
+    var bg = U.hexToRgb(colors.bg);
+    var bar = U.hexToRgb(colors.bar);
+    pdf.setFillColor(bg[0], bg[1], bg[2]);
+    pdf.setDrawColor(107, 119, 137);
+    pdf.setLineWidth(0.4);
+    pdf.rect(bx, by, bw, bh, 'FD');
+    pdf.setFillColor(bar[0], bar[1], bar[2]);
+    pdf.rect(bx, by, 3, bh, 'F');
+  }
+
+  // The same thing in miniature, for a legend entry.
+  function drawSwatch(pdf, colors, x, y) {
+    var bg = U.hexToRgb(colors.bg);
+    var bar = U.hexToRgb(colors.bar);
+    pdf.setFillColor(bg[0], bg[1], bg[2]);
+    pdf.setDrawColor(107, 119, 137);
+    pdf.setLineWidth(0.3);
+    pdf.rect(x, y - 6, 16, 8, 'FD');
+    pdf.setFillColor(bar[0], bar[1], bar[2]);
+    pdf.rect(x, y - 6, 3, 8, 'F');
   }
 
   /* Each kind held somewhere other than the center, as one labelled run of
@@ -130,11 +143,6 @@
     pdf.line(g.margin + g.gutterW, gridEnd, g.pageW - g.margin, gridEnd);
   }
 
-  /* ---- the week read by class ----
-   * A tutor covers every class they signed up for at once, so one shift comes
-   * out as a block under each of their classes. A student who only cares about
-   * one class reads down its lane and ignores the rest of the page.
-   */
   /* ---- what a calendar page draws inside its grid ----
    * The page around them is the same either way: header, notes, the band of
    * shifts held elsewhere, the QR block. Only the blocks and the legend that
@@ -153,21 +161,12 @@
         var tutor = TS.store.getTutor(a.tutorId);
         if (!tutor) return;
 
-        var colors = U.blockColors(tutor.colorIndex, false);
-        var bg = U.hexToRgb(colors.bg);
-        var bar = U.hexToRgb(colors.bar);
         var laneW = (g.colW - DAY_PAD * 2) / place.lanes;
         var bx = g.margin + g.gutterW + g.colW * day + DAY_PAD + laneW * place.lane + 1;
         var by = g.bodyTop + (a.startSlot - g.win.start) * g.rowH + 0.5;
         var bw = laneW - 2;
         var bh = (a.endSlot - a.startSlot) * g.rowH - 1;
-
-        pdf.setFillColor(bg[0], bg[1], bg[2]);
-        pdf.setDrawColor(107, 119, 137);
-        pdf.setLineWidth(0.4);
-        pdf.rect(bx, by, bw, bh, 'FD');
-        pdf.setFillColor(bar[0], bar[1], bar[2]);
-        pdf.rect(bx, by, 3, bh, 'F');
+        drawBlockBox(pdf, U.blockColors(tutor.colorIndex, false), bx, by, bw, bh);
 
         var textX = bx + 6;
         var textW = bw - 8;
@@ -191,10 +190,11 @@
     }
   }
 
-  /* One lane per group of classes covered that day, in the order the class list
-   * gives, so a class keeps its place across the week. A tutor teaching several
-   * classes covers them all at once and so appears in several lanes -- that is
-   * the page, not double counting.
+  /* The week read by class: one lane per group of classes covered that day, in
+   * the order the class list gives, so a class keeps its place across the week.
+   * A tutor teaching several classes covers them all at once and so appears in
+   * several lanes -- that is the page, not double counting. A student who only
+   * cares about one class reads down its lane and ignores the rest.
    */
   function drawClassBlocks(pdf, state, labels, g) {
     var runs = U.coverageRuns(state.assignments, state.tutors);
@@ -210,22 +210,13 @@
       lanes.sort(function (a, b) { return a - b; });
 
       dayRuns.forEach(function (run) {
-        var colors = U.coverageColors(run, false);
-        var bg = U.hexToRgb(colors.bg);
-        var bar = U.hexToRgb(colors.bar);
         var laneW = (g.colW - DAY_PAD * 2) / lanes.length;
         var bx = g.margin + g.gutterW + g.colW * day + DAY_PAD +
           laneW * lanes.indexOf(run.lane) + 1;
         var by = g.bodyTop + (run.startSlot - g.win.start) * g.rowH + 0.5;
         var bw = laneW - 2;
         var bh = (run.endSlot - run.startSlot) * g.rowH - 1;
-
-        pdf.setFillColor(bg[0], bg[1], bg[2]);
-        pdf.setDrawColor(107, 119, 137);
-        pdf.setLineWidth(0.4);
-        pdf.rect(bx, by, bw, bh, 'FD');
-        pdf.setFillColor(bar[0], bar[1], bar[2]);
-        pdf.rect(bx, by, 3, bh, 'F');
+        drawBlockBox(pdf, U.coverageColors(run, false), bx, by, bw, bh);
 
         // A lane here can be a third of a day column rather than a half, so the
         // text starts a shade closer in -- two points is the difference between
@@ -332,16 +323,7 @@
       var rowI = i % 4;
       var lx = legendX + col * 130;
       var ly = legendY + rowI * 12;
-      var colors = U.blockColors(t.colorIndex, false);
-      var bg = U.hexToRgb(colors.bg);
-      var bar = U.hexToRgb(colors.bar);
-
-      pdf.setFillColor(bg[0], bg[1], bg[2]);
-      pdf.setDrawColor(107, 119, 137);
-      pdf.setLineWidth(0.3);
-      pdf.rect(lx, ly - 6, 16, 8, 'FD');
-      pdf.setFillColor(bar[0], bar[1], bar[2]);
-      pdf.rect(lx, ly - 6, 3, 8, 'F');
+      drawSwatch(pdf, U.blockColors(t.colorIndex, false), lx, ly);
 
       pdf.setFont('helvetica', 'bold');
       pdf.setTextColor(INK[0], INK[1], INK[2]);
@@ -367,16 +349,7 @@
       var rowI = i % 4;
       var lx = legendX + col * 175;
       var ly = legendY + rowI * 12;
-      var colors = U.laneColors(lane, false);
-      var bg = U.hexToRgb(colors.bg);
-      var bar = U.hexToRgb(colors.bar);
-
-      pdf.setFillColor(bg[0], bg[1], bg[2]);
-      pdf.setDrawColor(107, 119, 137);
-      pdf.setLineWidth(0.3);
-      pdf.rect(lx, ly - 6, 16, 8, 'FD');
-      pdf.setFillColor(bar[0], bar[1], bar[2]);
-      pdf.rect(lx, ly - 6, 3, 8, 'F');
+      drawSwatch(pdf, U.laneColors(lane, false), lx, ly);
 
       pdf.setFont('helvetica', 'bold');
       pdf.setTextColor(INK[0], INK[1], INK[2]);
@@ -461,19 +434,23 @@
     var pageH = pdf.internal.pageSize.getHeight();
     var margin = 28;
 
+    /* The tutor calendar, then the same handout with the week read by class.
+     * Printed double sided, those are the two faces of one sheet. With the
+     * listing turned on, it follows each calendar instead, so each sheet then
+     * carries a calendar on one face and the listing on the other.
+     */
+    var listing = !!s.includeListing;
     drawCalendarPage(pdf, state, labels, pageW, pageH, margin, false);
-
-    /* ---- page 2: the text listing ---- */
-    pdf.addPage();
-    drawListing(pdf, state, labels, pageW, pageH, margin);
-
-    /* ---- page 3: the same handout, with the week read by class ---- */
+    if (listing) {
+      pdf.addPage();
+      drawListing(pdf, state, labels, pageW, pageH, margin);
+    }
     pdf.addPage();
     drawCalendarPage(pdf, state, labels, pageW, pageH, margin, true);
-
-    /* ---- page 4: the listing again, backing the class calendar ---- */
-    pdf.addPage();
-    drawListing(pdf, state, labels, pageW, pageH, margin);
+    if (listing) {
+      pdf.addPage();
+      drawListing(pdf, state, labels, pageW, pageH, margin);
+    }
 
     var name = 'life-science-tutor-schedule' +
       (s.term ? '-' + s.term.replace(/\s+/g, '-').toLowerCase() : '') + '.pdf';
@@ -636,7 +613,7 @@
       });
     }
 
-    /* ---- footer: QR, url, legend ---- */
+    /* ---- footer: QR, what it is for, legend ---- */
     var footY = gridBottom + 12 + noteH + offH;
     pdf.setDrawColor(RULE[0], RULE[1], RULE[2]);
     pdf.setLineWidth(0.6);
@@ -644,14 +621,22 @@
 
     drawQr(pdf, s.qrUrl, margin + 3, footY, 58);
 
+    // The link itself is left off the page: it is long and carries an id
+    // nobody would type, so the code is what gets used.
+    var qrTextW = 170;
+    var qrY = footY + 10;
+    pdf.setTextColor(INK[0], INK[1], INK[2]);
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(8.5);
-    pdf.setTextColor(INK[0], INK[1], INK[2]);
-    pdf.text('Need help outside these hours?', margin + 72, footY + 10);
+    pdf.splitTextToSize(s.qrHeading || '', qrTextW).forEach(function (line) {
+      pdf.text(line, margin + 72, qrY);
+      qrY += 11;
+    });
     pdf.setFont('helvetica', 'normal');
-    pdf.text(s.qrCaption, margin + 72, footY + 21);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text(s.qrUrl, margin + 72, footY + 32);
+    pdf.splitTextToSize(s.qrCaption || '', qrTextW).slice(0, 4).forEach(function (line) {
+      pdf.text(line, margin + 72, qrY);
+      qrY += 11;
+    });
 
     var legendX = margin + 260;
     var legendY = footY + 6;
@@ -665,5 +650,5 @@
     return built;
   }
 
-  TS.pdf = { build: build, download: download, available: available, drawQr: drawQr };
+  TS.pdf = { build: build, download: download, available: available };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -79,9 +79,13 @@
     line.innerHTML = parts.join(' · ');
     line.hidden = !parts.length;
 
+    $('qr-heading').textContent = s.qrHeading;
     $('qr-caption').textContent = s.qrCaption;
-    $('qr-url').textContent = s.qrUrl;
-    $('qr-holder').innerHTML = TS.qr.toSvg(s.qrUrl, { label: 'QR code linking to ' + s.qrUrl });
+    $('qr-link').href = $('qr-book').href = s.qrUrl;
+    $('qr-link').innerHTML = TS.qr.toSvg(s.qrUrl, { label: 'QR code: ' + (s.qrHeading || s.qrUrl) });
+    $('qr-book').hidden = !s.qrUrl;
+
+    $('include-listing').checked = !!s.includeListing;
   }
 
   function renderStats(state) {
@@ -132,7 +136,8 @@
     optimize: 'auto-optimizing', clear: 'clearing the schedule',
     sample: 'loading the sample roster', reset: 'starting over',
     settings: 'a settings change', 'import-csv': 'a CSV import',
-    'import': 'an import', replace: 'loading a file', theme: 'a theme change'
+    'import': 'an import', replace: 'loading a file', theme: 'a theme change',
+    listing: 'turning the text listing on or off'
   };
 
   function renderUndo() {
@@ -196,6 +201,7 @@
     });
     renderCalendarHint(state);
     renderLockAll(state);
+    $('btn-email-all').disabled = !tutorEmails(state).length;
     renderUndo();
     renderStats(state);
     renderGaps(state);
@@ -245,6 +251,35 @@
     TS.store.removeTutor(id);
     TS.store.commit('remove-tutor');
     notice(full + ' removed.', 'info');
+  }
+
+  function tutorEmails(state) {
+    var seen = {};
+    return state.tutors.map(function (t) { return t.email; }).filter(function (e) {
+      var key = String(e || '').toLowerCase();
+      if (!key || seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+  }
+
+  /* Blind copied, so nobody replies to the whole roster by accident and no
+   * tutor's address is handed to the others. */
+  function emailAll() {
+    var state = TS.store.state;
+    var emails = tutorEmails(state);
+    if (!emails.length) {
+      notice('No tutor has an email yet. Add one with Edit, or import a CSV with an Email column.', 'warn');
+      return;
+    }
+    root.location.href = 'mailto:?bcc=' + emails.map(encodeURIComponent).join(',');
+    var missing = state.tutors.filter(function (t) { return !t.email; }).map(function (t) {
+      return (t.firstName + ' ' + t.lastName).trim();
+    });
+    if (missing.length) {
+      notice('Opened an email to ' + emails.length + ' tutor(s). No email on file for ' +
+        U.listSentence(missing) + '.', 'warn');
+    }
   }
 
   /* ---- building by hand -------------------------------------------------- */
@@ -555,6 +590,7 @@
   /* ---- settings ---------------------------------------------------------- */
 
   var SETTING_FIELDS = [
+    { group: 'Handout' },
     { key: 'title', label: 'Schedule title', type: 'text' },
     { key: 'term', label: 'Semester', type: 'text', placeholder: 'Fall 2026' },
     { key: 'effective', label: 'Effective dates', type: 'text', placeholder: 'Aug 24 – Dec 11' },
@@ -567,8 +603,11 @@
       placeholder: 'Who to ask about the schedule' },
     { key: 'contactEmail', label: 'Contact email', type: 'email',
       placeholder: 'name@example.edu' },
-    { key: 'qrUrl', label: 'QR code link', type: 'url' },
-    { key: 'qrCaption', label: 'QR caption', type: 'text' }
+    { group: 'Appointment QR code' },
+    { key: 'qrUrl', label: 'Link', type: 'url',
+      hint: 'Used exactly as typed. The code is printed; the link itself is not.' },
+    { key: 'qrHeading', label: 'Heading', type: 'text' },
+    { key: 'qrCaption', label: 'Caption', type: 'text' }
   ];
 
   var RULE_FIELDS = [
@@ -589,7 +628,11 @@
     var s = state.settings;
     var html = '';
 
-    SETTING_FIELDS.forEach(function (f) {
+    SETTING_FIELDS.forEach(function (f, i) {
+      if (f.group) {
+        html += (i ? '</fieldset>' : '') + '<fieldset><legend>' + esc(f.group) + '</legend>';
+        return;
+      }
       var ph = f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '';
       html += '<div class="field"><label for="set-' + f.key + '">' + esc(f.label) + '</label>' +
         (f.type === 'textarea'
@@ -600,6 +643,7 @@
         (f.hint ? '<p class="field__hint">' + esc(f.hint) + '</p>' : '') +
         '</div>';
     });
+    html += '</fieldset>';
 
     html += '<fieldset><legend>Classes</legend>' +
       '<p class="field__hint" style="margin-top:0">What the tutors are here to help with. ' +
@@ -807,6 +851,11 @@
     $('btn-optimize').addEventListener('click', function () { optimize(); });
     $('btn-cancel').addEventListener('click', cancelOptimize);
     $('btn-add-tutor').addEventListener('click', addTutor);
+    $('btn-email-all').addEventListener('click', emailAll);
+    $('include-listing').addEventListener('change', function (e) {
+      TS.store.state.settings.includeListing = e.target.checked;
+      TS.store.commit('listing');
+    });
     $('btn-lock-all').addEventListener('click', lockEverything);
     $('btn-undo').addEventListener('click', undoChange);
 

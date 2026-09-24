@@ -171,6 +171,10 @@ textarea:focus-visible,
 }
 .btn--primary:hover { background: var(--brand-blue-dark); border-color: var(--brand-blue-dark); }
 :root[data-theme="dark"] .btn--primary:hover { background: #9CC4FF; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .btn--primary:hover { background: #9CC4FF; }
+}
+a.btn { display: inline-block; text-decoration: none; }
 .btn--quiet { background: transparent; border-color: transparent; text-decoration: underline; padding: 6px 8px; }
 .btn--danger { color: var(--danger); }
 .btn[disabled] { opacity: .5; cursor: not-allowed; }
@@ -204,6 +208,15 @@ legend { font-weight: 700; font-size: 13px; padding: 0 5px; }
   display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
 }
 .toolbar__spacer { flex: 1 1 auto; }
+/* Building the week and printing it are separate jobs, so their buttons sit in
+   separate groups with a rule between them. */
+.toolbar__group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.toolbar__group + .toolbar__group { padding-left: 10px; border-left: 1px solid var(--border); }
+.toolbar__check {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-weight: 600; font-size: 13px; cursor: pointer; margin-left: 4px;
+}
+.select--auto { width: auto; }
 
 .stats { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--ink-muted); }
 .stats strong { color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -258,11 +271,13 @@ legend { font-weight: 700; font-size: 13px; padding: 0 5px; }
 .roster__name { font-weight: 700; }
 .roster__label { color: var(--ink-muted); font-size: 12px; font-weight: 400; }
 .roster__meta { font-size: 12.5px; color: var(--ink-muted); }
-/* Four actions do not fit beside a name in a sidebar, so they take their own
+.roster__email { font-size: 12.5px; overflow-wrap: anywhere; }
+/* Five actions do not fit beside a name in a sidebar, so they take their own
    line under it rather than squeezing the roster text to one word per row. */
 .roster__actions {
   display: flex; gap: 4px; flex: 1 0 100%; flex-wrap: wrap; justify-content: flex-end;
 }
+.roster__actions .btn--small { padding: 3px 6px; font-size: 12.5px; }
 .roster__row[data-selected="1"] {
   background: var(--avail-tint);
   box-shadow: inset 3px 0 0 var(--accent);
@@ -531,6 +546,11 @@ legend { font-weight: 700; font-size: 13px; padding: 0 5px; }
 .field--inline { display: flex; align-items: center; gap: 8px; }
 .field--inline label { margin: 0; }
 .field__hint { font-size: 12px; color: var(--ink-muted); margin: 4px 0 0; }
+.field__hint--lead { margin: 0 0 12px; }
+.field__label { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+.field__row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.field--end { margin: 4px 0 0; padding-top: 12px; border-top: 1px solid var(--border); }
+fieldset + fieldset, .field + fieldset { margin-top: 12px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 /* The class list: a full name, the short code that has to fit on a block, and
@@ -574,12 +594,16 @@ details.settings > summary:focus-visible { outline: 3px solid var(--brand-orange
 /* ---- footer / QR ------------------------------------------------------- */
 
 .schedule-foot {
-  display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+  display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
   padding: 14px; border-top: 1px solid var(--border);
 }
+.schedule-foot__qr { display: block; line-height: 0; border-radius: 4px; }
 .qr-svg { width: 108px; height: 108px; display: block; background: #fff; border: 1px solid var(--border); }
-.schedule-foot__text { font-size: 13px; line-height: 1.5; }
-.schedule-foot__url { font-weight: 700; word-break: break-all; }
+.schedule-foot__text {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  font-size: 13px; line-height: 1.5; max-width: 360px;
+}
+.schedule-foot__text strong { font-family: var(--serif); font-size: 15px; }
 
 /* The print rendering is built from the same state but only shown on paper. */
 .print-only { display: none; }

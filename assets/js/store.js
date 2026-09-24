@@ -5,6 +5,8 @@
 
   var STORAGE_KEY = 'cscc-tutor-scheduler-v1';
   var VERSION = 1;
+  var APPOINTMENT_URL =
+    'https://slate.chattanoogastate.edu/register/?id=a69c0cfb-95a8-48a2-860f-b38c6a4795aa';
 
   function defaultSettings() {
     return {
@@ -14,11 +16,16 @@
       notes: 'No tutoring will be available September 7, October 5–11, or November 23–29, ' +
         'or any time the IMC and/or campus is closed. The last day of tutoring for the fall ' +
         'semester is December 10, 2026.',
-      location: 'Student Success Center (IMC 270)',
+      location: 'Academic Success Center (IMC 270)',
       contactName: '',
       contactEmail: '',
-      qrUrl: 'https://www.tutor.com',
-      qrCaption: 'Free 24/7 online tutoring',
+      // The link is used exactly as given: Slate needs the id to find the form.
+      qrUrl: APPOINTMENT_URL,
+      qrHeading: 'Schedule a tutoring appointment',
+      qrCaption: 'Scan the code to book a time with a tutor.',
+      // The plain-text listing is optional, so the two calendars can be
+      // printed on the two faces of one sheet.
+      includeListing: false,
       minShiftSlots: 2,
       // Up to three at the center through the day, two once the evening starts
       // -- see U.capRules for how a shift already running carries past it.
@@ -176,6 +183,7 @@
         if (Object.prototype.hasOwnProperty.call(obj.settings, k)) next.settings[k] = obj.settings[k];
       });
     }
+    upgradeSettings(next.settings);
     // The class list drives every subject mask in the app, so it is applied
     // before a single tutor is normalized against it.
     next.settings.subjects = U.normalizeSubjectList(next.settings.subjects);
@@ -189,10 +197,24 @@
     return next;
   }
 
+  /* Older schedules carry what used to be the defaults: the tutor.com QR and
+   * the center's old name. Both are swapped for their replacements, so a saved
+   * or exported schedule prints the current handout without being retyped.
+   */
+  function upgradeSettings(s) {
+    if (/tutor\.com/i.test(s.qrUrl)) {
+      var fresh = defaultSettings();
+      s.qrUrl = fresh.qrUrl;
+      s.qrHeading = fresh.qrHeading;
+      if (s.qrCaption === 'Free 24/7 online tutoring') s.qrCaption = fresh.qrCaption;
+    }
+    s.location = String(s.location || '').replace(/Student Success Center/g, 'Academic Success Center');
+  }
+
   function normalizeTutor(t) {
-    var avail = new Array(U.TOTAL_SLOTS);
+    var avail = U.emptyAvailability();
     for (var i = 0; i < U.TOTAL_SLOTS; i++) {
-      avail[i] = t.availability && t.availability[i] ? 1 : 0;
+      if (t.availability && t.availability[i]) avail[i] = 1;
     }
     /* Every class the schedule currently knows about, plus any flag left over
      * from one that was removed: keeping the stray keys is what lets an
@@ -210,6 +232,7 @@
       id: t.id || U.uid('tutor'),
       firstName: String(t.firstName || '').trim(),
       lastName: String(t.lastName || '').trim(),
+      email: String(t.email || '').trim(),
       colorIndex: typeof t.colorIndex === 'number' ? t.colorIndex : 0,
       subjects: subjects,
       maxHoursPerWeek: typeof t.maxHoursPerWeek === 'number'
@@ -342,12 +365,6 @@
     return n;
   }
 
-  function totalSlots() {
-    var n = 0;
-    state.assignments.forEach(function (a) { n += a.endSlot - a.startSlot; });
-    return n;
-  }
-
   /* ---- import / export ---- */
 
   function toJson() { return JSON.stringify(state, null, 2); }
@@ -374,8 +391,7 @@
    * enough availability that all 135 slots are coverable by someone.
    */
   function availability(windows) {
-    var a = new Array(U.TOTAL_SLOTS);
-    for (var i = 0; i < U.TOTAL_SLOTS; i++) a[i] = 0;
+    var a = U.emptyAvailability();
     windows.forEach(function (w) {
       var days = w[0], start = U.hhmmToSlot(w[1]), end = U.hhmmToSlot(w[2]);
       days.forEach(function (d) {
@@ -430,22 +446,19 @@
   }
 
   TS.store = {
-    STORAGE_KEY: STORAGE_KEY,
+    APPOINTMENT_URL: APPOINTMENT_URL,
     get state() { return state; },
     defaultSettings: defaultSettings,
     emptyState: emptyState,
-    availability: availability,
     sampleTutors: sampleTutors,
     recolorTutors: recolorTutors,
     on: on,
-    emit: emit,
     commit: commit,
     undo: undo,
     redo: redo,
     canUndo: canUndo,
     canRedo: canRedo,
     clearHistory: clearHistory,
-    save: save,
     storageAvailable: storageAvailable,
     load: load,
     migrate: migrate,
@@ -459,7 +472,6 @@
     removeAssignment: removeAssignment,
     mergeTouching: mergeTouching,
     slotsFor: slotsFor,
-    totalSlots: totalSlots,
     toJson: toJson,
     fromJson: fromJson,
     replaceState: replaceState,

@@ -19,7 +19,7 @@
       <h1 class="app-header__title" id="app-title">Life Science Tutor Schedule</h1>
     </div>
     <div class="app-header__meta">
-      <div id="header-location">Student Success Center (IMC 270)</div>
+      <div id="header-location">Academic Success Center (IMC 270)</div>
       <div id="header-contact-line" hidden></div>
     </div>
   </div>
@@ -27,13 +27,23 @@
 
 <div class="toolbar">
   <div class="toolbar__inner">
-    <button type="button" class="btn btn--primary" id="btn-optimize">Auto-optimize</button>
-    <button type="button" class="btn" id="btn-cancel" hidden>Cancel</button>
-    <button type="button" class="btn" id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
-    <button type="button" class="btn" id="btn-lock-all">Lock all shifts</button>
-    <button type="button" class="btn" id="btn-clear">Clear schedule</button>
-    <button type="button" class="btn" id="btn-print">Print / Save as PDF</button>
-    <button type="button" class="btn" id="btn-pdf">Download PDF</button>
+    <div class="toolbar__group" role="group" aria-label="Build the schedule">
+      <button type="button" class="btn btn--primary" id="btn-optimize">Auto-optimize</button>
+      <button type="button" class="btn" id="btn-cancel" hidden>Cancel</button>
+      <button type="button" class="btn" id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
+      <button type="button" class="btn" id="btn-lock-all">Lock all shifts</button>
+      <button type="button" class="btn" id="btn-clear">Clear schedule</button>
+    </div>
+
+    <div class="toolbar__group" role="group" aria-label="Print the handout">
+      <button type="button" class="btn" id="btn-print">Print / Save as PDF</button>
+      <button type="button" class="btn" id="btn-pdf">Download PDF</button>
+      <!-- Outside the settings panel, which is re-rendered from state: it sits
+           with the buttons it changes. -->
+      <label class="toolbar__check" title="Add the plain-text shift listing after each calendar">
+        <input type="checkbox" id="include-listing"> Include text listing
+      </label>
+    </div>
 
     <div class="toolbar__spacer"></div>
 
@@ -41,7 +51,7 @@
 
     <div class="field--inline">
       <label for="theme-select">Theme</label>
-      <select id="theme-select" style="width:auto">
+      <select id="theme-select" class="select--auto">
         <option value="system">System</option>
         <option value="light">Light</option>
         <option value="dark">Dark</option>
@@ -61,6 +71,7 @@
       <div class="panel__head">
         <h2 id="tutors-heading">Tutors</h2>
         <div class="toolbar__spacer"></div>
+        <button type="button" class="btn btn--small" id="btn-email-all">Email all</button>
         <button type="button" class="btn btn--small btn--primary" id="btn-add-tutor">Add tutor</button>
       </div>
       <div class="panel__body--flush">
@@ -71,26 +82,30 @@
     <section class="panel" aria-labelledby="data-heading">
       <div class="panel__head"><h2 id="data-heading">Save &amp; share</h2></div>
       <div class="panel__body">
-        <p class="field__hint" style="margin-top:0" id="save-hint">
+        <p class="field__hint field__hint--lead" id="save-hint">
           Your work saves automatically in this browser. Export a file to move it to another
           computer or to keep a backup.
         </p>
-        <div class="field">
-          <label>Whole schedule</label>
-          <button type="button" class="btn btn--small" id="btn-export-json">Export JSON</button>
-          <button type="button" class="btn btn--small" id="btn-import-json">Import JSON</button>
+        <div class="field" role="group" aria-labelledby="json-label">
+          <div class="field__label" id="json-label">Whole schedule</div>
+          <div class="field__row">
+            <button type="button" class="btn btn--small" id="btn-export-json">Export JSON</button>
+            <button type="button" class="btn btn--small" id="btn-import-json">Import JSON</button>
+          </div>
         </div>
-        <div class="field">
-          <label>Tutor roster (spreadsheet)</label>
-          <button type="button" class="btn btn--small" id="btn-export-csv">Export CSV</button>
-          <button type="button" class="btn btn--small" id="btn-import-csv">Import CSV</button>
-          <button type="button" class="btn btn--small btn--quiet" id="btn-template-csv">Template</button>
+        <div class="field" role="group" aria-labelledby="csv-label">
+          <div class="field__label" id="csv-label">Tutor roster (spreadsheet)</div>
+          <div class="field__row">
+            <button type="button" class="btn btn--small" id="btn-export-csv">Export CSV</button>
+            <button type="button" class="btn btn--small" id="btn-import-csv">Import CSV</button>
+            <button type="button" class="btn btn--small btn--quiet" id="btn-template-csv">Template</button>
+          </div>
           <p class="field__hint">
-            Opens in Excel or Sheets. Availability reads like
+            Opens in Excel or Sheets, with each tutor's email. Availability reads like
             <code>Mon/Wed/Fri 12:00-17:00</code>.
           </p>
         </div>
-        <div class="field">
+        <div class="field field--end">
           <button type="button" class="btn btn--small btn--danger" id="btn-reset">Start over</button>
         </div>
         <input type="file" id="file-input" accept=".json,.csv,text/csv,application/json" class="visually-hidden">
@@ -135,11 +150,11 @@
         </aside>
       </div>
       <div class="schedule-foot">
-        <div id="qr-holder"></div>
+        <a id="qr-link" class="schedule-foot__qr" target="_blank" rel="noopener"></a>
         <div class="schedule-foot__text">
-          <div><strong>Need help outside these hours?</strong></div>
-          <div id="qr-caption">Free 24/7 online tutoring</div>
-          <div class="schedule-foot__url" id="qr-url">https://www.tutor.com</div>
+          <strong id="qr-heading"></strong>
+          <div id="qr-caption"></div>
+          <a id="qr-book" class="btn btn--small" target="_blank" rel="noopener">Open the booking page</a>
         </div>
       </div>
     </section>
