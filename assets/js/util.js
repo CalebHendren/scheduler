@@ -7,7 +7,7 @@
    * commit and attaches the single-file build. Semantic versioning -- a new
    * feature is a minor bump, a fix is a patch.
    */
-  var VERSION = '1.3.0';
+  var VERSION = '1.4.0';
 
   var DAY_START_MIN = 7 * 60;      // 7:00 AM
   var SLOT_MINUTES = 30;
@@ -382,6 +382,72 @@
 
   function hoursLabel(halfHours) {
     return (Math.round((halfHours / 2) * 10) / 10) + ' h';
+  }
+
+  /* ---- the handout's file name ----
+   * "Effective dates" is free text, typed however the term calendar reads, so
+   * the first date in it is found rather than required in one format:
+   * "Aug 24 – Dec 11", "August 24, 2026 - December 11, 2026", "8/24 - 12/11",
+   * "2026-08-24". A start with no year of its own takes the next year written
+   * in the text -- stepping back one when the dates run over New Year -- then
+   * the one in the semester name, then the current one.
+   */
+  var MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  var DATE_PATTERNS = [
+    { re: /\b(\d{4})-(\d{1,2})-(\d{1,2})\b/, y: 1, m: 2, d: 3 },
+    { re: /\b(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{4}|\d{2}))?\b/, m: 1, d: 2, y: 3 },
+    { re: /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4})\b)?/i,
+      name: 1, d: 2, y: 3 }
+  ];
+
+  // The earliest date written in `text`, as { month, day, year|null, end }.
+  function firstDate(text) {
+    var best = null;
+    DATE_PATTERNS.forEach(function (p) {
+      var m = p.re.exec(text);
+      if (!m || (best && best.index <= m.index)) return;
+      var month = p.name ? MONTHS.indexOf(m[p.name].slice(0, 3).toLowerCase()) + 1 : +m[p.m];
+      var year = m[p.y] ? +m[p.y] : null;
+      if (year !== null && year < 100) year += 2000;
+      best = { index: m.index, end: m.index + m[0].length, month: month, day: +m[p.d], year: year };
+    });
+    if (!best || best.month < 1 || best.month > 12 || best.day < 1 || best.day > 31) return null;
+    return best;
+  }
+
+  function effectiveStart(effective, term, today) {
+    var text = String(effective || '');
+    var start = firstDate(text);
+    if (!start) return null;
+    var year = start.year;
+    if (year === null) {
+      var rest = text.slice(start.end);
+      var later = rest.match(/\b(\d{4})\b/);
+      if (later) {
+        year = +later[1];
+        var next = firstDate(rest);
+        if (next && next.month < start.month) year--;
+      } else {
+        var named = String(term || '').match(/\b(\d{4})\b/);
+        year = named ? +named[1] : (today || new Date()).getFullYear();
+      }
+    }
+    // Rolled over (Feb 30) means it was never a date.
+    var check = new Date(year, start.month - 1, start.day);
+    if (check.getMonth() !== start.month - 1) return null;
+    return { year: year, month: start.month, day: start.day };
+  }
+
+  /* "Life Science Tutor Schedule 8-24-2026": the title and the day the
+   * schedule takes effect, or today when no start date is given. Used for the
+   * downloaded PDF and, as the page title while printing, for the name the
+   * browser offers when saving as PDF. */
+  function handoutName(settings, today) {
+    var now = today || new Date();
+    var d = effectiveStart(settings.effective, settings.term, now) ||
+      { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+    var title = String(settings.title || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return (title || 'Tutor Schedule') + ' ' + d.month + '-' + d.day + '-' + d.year;
   }
 
   function subjectMask(subjects) {
@@ -1111,6 +1177,8 @@
     minutesToHhmm: minutesToHhmm,
     hhmmToSlot: hhmmToSlot,
     hoursLabel: hoursLabel,
+    effectiveStart: effectiveStart,
+    handoutName: handoutName,
     subjectMask: subjectMask,
     maskToShort: maskToShort,
     maskToLabels: maskToLabels,

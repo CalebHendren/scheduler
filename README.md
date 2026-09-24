@@ -288,6 +288,13 @@ Two buttons, for two different needs:
   same landscape layout and real text (nothing is a screenshot), but jsPDF does not emit a
   tagged structure tree, so it is the convenience option rather than the accessible one.
 
+Either way the file is named for the schedule and the day it takes effect — *Life Science Tutor
+Schedule 8-24-2026* — from the first date in **Effective dates** under **Schedule settings**.
+Any usual way of writing it works (`Aug 24 – Dec 11`, `8/24/2026 - 12/11/2026`, `2026-08-24`);
+a date with no year takes the one in the semester name. With no effective date, today's date is
+used. Print / Save as PDF gets the name by putting it in the page title while printing, which is
+what Chrome and Edge offer as the file name.
+
 Tick **Include text listing** beside the two buttons to add a plain-text listing of every
 shift, in two columns, after each calendar. That makes four pages — calendar, listing, coverage
 by class, listing — so a double-sided print gives a sheet with a calendar on one face and the

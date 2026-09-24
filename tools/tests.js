@@ -1146,6 +1146,33 @@
 
   /* ---- 9. defaults ------------------------------------------------------- */
 
+  /* ---- the handout's file name ---------------------------------------- */
+
+  function testHandoutName(r) {
+    var today = new Date(2026, 8, 24);
+    var name = function (effective, term) {
+      return U.handoutName({ title: 'Life Science Tutor Schedule', effective: effective, term: term }, today);
+    };
+    r.eq(name('Aug 24 – Dec 11', 'Fall 2026'), 'Life Science Tutor Schedule 8-24-2026',
+      'the file is named for the day the schedule takes effect');
+    r.eq(name('August 24, 2026 - December 11, 2026', ''), 'Life Science Tutor Schedule 8-24-2026',
+      'written out in full, the start date is still found');
+    r.eq(name('8/24 - 12/11', 'Spring 2027'), 'Life Science Tutor Schedule 8-24-2027',
+      'a start with no year takes the semester\'s');
+    r.eq(name('2026-08-24 to 2026-12-11', ''), 'Life Science Tutor Schedule 8-24-2026',
+      'an ISO date reads too');
+    r.eq(name('Dec 1 – Jan 15, 2027', ''), 'Life Science Tutor Schedule 12-1-2026',
+      'dates that run over New Year start in the year before the one written');
+    r.eq(name('Starts 8/24/26', ''), 'Life Science Tutor Schedule 8-24-2026', 'a two-digit year reads');
+    r.eq(name('', 'Fall 2026'), 'Life Science Tutor Schedule 9-24-2026',
+      'with no effective date, the file is named for today');
+    r.eq(name('Feb 30 – Mar 3', ''), 'Life Science Tutor Schedule 9-24-2026',
+      'and so it is when the start is not a real date');
+    r.eq(U.handoutName({ title: 'Bio/Micro: Fall', effective: 'Aug 24' }, today),
+      'Bio Micro Fall 8-24-2026',
+      'characters a file name cannot hold are dropped from the title');
+  }
+
   function testDefaults(r) {
     var s = TS.store.defaultSettings();
     r.eq(s.defaultMaxHours, 20, 'a tutor is approved for 20 hours a week by default');
@@ -1342,6 +1369,7 @@
     testShiftKinds(r);
     testMergeTouching(r);
     testDefaults(r);
+    testHandoutName(r);
     testEveningCap(r);
     testContinuousShifts(r);
     testEmptyRoster(r);
