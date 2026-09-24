@@ -15,42 +15,66 @@
   }
 
   /* ---- lane packing ------------------------------------------------------
-   * Overlapping blocks are grouped into clusters, and every block in a cluster
-   * is drawn at the same width. Without the cluster step, a block would change
-   * width halfway down whenever a neighbour started or ended.
+   * A day is drawn as a fixed set of columns, and a tutor keeps one column for
+   * the whole day: someone who takes a break comes back in the column they
+   * left, rather than jumping sides because the people around them changed.
+   *
+   * Tutors pick columns in order of the hours they work that day, most first,
+   * so the backbone of the day sits on the left and a short shift on the
+   * right. Each takes the leftmost column that is right of everyone with more
+   * hours working alongside them; when that would open a new column while an
+   * existing one sits empty for all of their hours, they take that one
+   * instead, so the day never gets narrower columns than it needs.
+   *
+   * Every block on the day reports the same lane count, so a block is the
+   * same width from top to bottom and the columns line up across the day.
    */
   function layoutDay(blocks) {
-    var sorted = blocks.slice().sort(function (a, b) {
-      return a.startSlot - b.startSlot || a.endSlot - b.endSlot;
-    });
-    var clusters = [];
-    var current = null;
-
-    sorted.forEach(function (b) {
-      if (current && b.startSlot < current.end) {
-        current.items.push(b);
-        current.end = Math.max(current.end, b.endSlot);
-      } else {
-        current = { items: [b], end: b.endSlot };
-        clusters.push(current);
+    var byTutor = {};
+    var tutors = [];
+    blocks.forEach(function (b) {
+      var t = byTutor[b.tutorId];
+      if (!t) {
+        t = byTutor[b.tutorId] = { id: b.tutorId, blocks: [], slots: 0, first: b.startSlot };
+        tutors.push(t);
       }
+      t.blocks.push(b);
+      t.slots += b.endSlot - b.startSlot;
+      t.first = Math.min(t.first, b.startSlot);
+    });
+    // Most hours first; a tie goes to whoever starts earlier, then a fixed
+    // order so the page does not reshuffle between renders.
+    tutors.sort(function (a, b) {
+      return b.slots - a.slots || a.first - b.first || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    });
+
+    function overlaps(a, b) {
+      return a.blocks.some(function (x) {
+        return b.blocks.some(function (y) { return x.startSlot < y.endSlot && y.startSlot < x.endSlot; });
+      });
+    }
+
+    var lanes = [];   // tutors in each column
+    tutors.forEach(function (t) {
+      var after = -1;
+      lanes.forEach(function (column, i) {
+        if (column.some(function (o) { return overlaps(o, t); })) after = i;
+      });
+      var lane = after + 1;
+      if (lane === lanes.length) {
+        for (var i = 0; i < lanes.length; i++) {
+          if (!lanes[i].some(function (o) { return overlaps(o, t); })) { lane = i; break; }
+        }
+      }
+      if (lane === lanes.length) lanes.push([]);
+      lanes[lane].push(t);
+      t.lane = lane;
     });
 
     var placement = {};
-    clusters.forEach(function (cluster) {
-      var laneEnds = [];
-      cluster.items.forEach(function (b) {
-        var lane = -1;
-        for (var i = 0; i < laneEnds.length; i++) {
-          if (laneEnds[i] <= b.startSlot) { lane = i; break; }
-        }
-        if (lane === -1) { lane = laneEnds.length; laneEnds.push(0); }
-        laneEnds[lane] = b.endSlot;
-        placement[b.id] = { lane: lane };
-      });
-      cluster.items.forEach(function (b) { placement[b.id].lanes = laneEnds.length; });
+    tutors.forEach(function (t) {
+      t.blocks.forEach(function (b) { placement[b.id] = { lane: t.lane, lanes: lanes.length }; });
     });
-
     return placement;
   }
 
