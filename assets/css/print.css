@@ -7,9 +7,10 @@
    document title at the top, the page URL at the bottom -- inside whatever the
    @page margin leaves them, and there is no CSS switch to turn that off. Give
    them no margin to draw into and the handout comes out clean; the page inset
-   comes back below as padding on the print root. */
+   comes back below as padding on the print root. The size -- letter, landscape
+   or portrait -- is the schedule's own setting, so printview.js writes it in
+   a <style id="pv-page"> alongside this. */
 @page {
-  size: letter landscape;
   margin: 0;
 }
 
@@ -87,8 +88,9 @@ html, body {
   vertical-align: top;
 }
 /* A fixed height, not a minimum: the class page works out what fits in a
-   block from it (ROW_PX in printview.js). */
-.pv-table tbody tr { height: 14px; }
+   block from it. printview.js sets it per page (rowPxFor), sized to fill
+   whichever way round the sheet is. */
+.pv-table tbody tr { height: var(--pv-row, 14px); }
 .pv-empty { border-bottom: 1px solid #EDF1F6; border-right: 1px solid #DCE3EC; }
 .pv-table tbody tr.pv-hour .pv-empty,
 .pv-table tbody tr.pv-hour .pv-time { border-top: 1px solid #B9C3D1; }
@@ -103,6 +105,7 @@ html, body {
   background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.14) 0 4px, transparent 4px 9px);
 }
 .pv-block__name { display: block; font-weight: 700; font-size: 8pt; }
+.pv-block__name--small { font-size: 6.5pt; }
 .pv-block__time { display: block; font-size: 6.5pt; }
 .pv-block__subjects { display: block; font-size: 6.5pt; font-weight: 700; letter-spacing: .02em; }
 
@@ -204,7 +207,42 @@ html, body {
 
 /* ---- text listing ------------------------------------------------------ */
 
-/* The listing is a narrow list on a landscape page, so it runs in two columns
+/* Each 7 weeks starts a sheet of its own, with the inset the print root only
+   gives the first page. */
+.pv-period + .pv-period {
+  padding-top: 0.4in;
+  page-break-before: always;
+}
+
+.pv-coverage {
+  /* The page inset above is the print root's padding, which lands once at the
+     top of page one; this page is its own sheet and needs its own. */
+  padding-top: 0.4in;
+  page-break-before: always;
+}
+/* A class block carries a short code rather than a name, so the tutors under
+   it are what the width is actually spent on. */
+.pv-block__who { display: block; font-size: 6.5pt; line-height: 1.15; }
+/* Where the tutors change inside a class block: a faint rule at that hour, and
+   the new stretch's hours and names under it. */
+/* Exactly as tall as the rows the block spans (set in printview.js), so its
+   text can never stretch them: the grid stays to scale. */
+.pv-run { position: relative; overflow: hidden; }
+.pv-nowrap { white-space: nowrap; }
+/* A stretch is boxed to its own hours. printview.js has already worked out
+   how many whole lines of names fit alongside the class code and the time,
+   and the names are clamped to that. */
+.pv-seg { position: absolute; left: 0; right: 0; overflow: hidden; }
+.pv-seg > .pv-block__who {
+  display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
+  line-height: 10px;
+}
+.pv-seg > .pv-block__time { line-height: 10px; }
+.pv-seg--after { border-top: 1px solid rgba(20, 24, 31, .22); padding-top: 1px; }
+
+/* ---- text listing ------------------------------------------------------ */
+
+/* The listing is a narrow list on a letter page, so it runs in two columns
    -- one page of the week rather than one and a half. Balanced, so a week that
    fits on one page splits evenly rather than running the first column to the
    foot of the sheet. */

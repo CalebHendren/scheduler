@@ -217,6 +217,11 @@ legend { font-weight: 700; font-size: 13px; padding: 0 5px; }
   font-weight: 600; font-size: 13px; cursor: pointer; margin-left: 4px;
 }
 .select--auto { width: auto; }
+.toolbar__select {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-weight: 600; font-size: 13px; margin-left: 4px;
+}
+.toolbar__select select { padding: 5px 7px; font-size: 13px; }
 
 .stats { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--ink-muted); }
 .stats strong { color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -520,6 +525,18 @@ legend { font-weight: 700; font-size: 13px; padding: 0 5px; }
     max-height: none; overflow: visible;
   }
 }
+
+/* The two 7-week halves: a pair of buttons that reads as one control. */
+.period-switch { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 4px; overflow: hidden; }
+.period-switch button {
+  font: inherit; font-size: 13px; font-weight: 600; padding: 4px 10px;
+  border: 0; background: var(--surface); color: var(--ink); cursor: pointer;
+}
+.period-switch button + button { border-left: 1px solid var(--border-strong); }
+.period-switch button[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
+.period-switch button:hover:not([aria-checked="true"]) { background: var(--surface-2); }
+.period-dates + .period-dates { margin-top: 4px; }
+.period-dates__name { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
 
 /* ---- warnings & gaps --------------------------------------------------- */
 

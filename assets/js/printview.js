@@ -70,7 +70,8 @@
    * rows it spans below are absorbed by that cell's rowspan.
    */
   function gridTable(what, win, days, cellFor) {
-    var html = '<table class="pv-table"><caption class="visually-hidden">' +
+    var rowPx = rowPxFor(win);
+    var html = '<table class="pv-table" style="--pv-row:' + rowPx + 'px"><caption class="visually-hidden">' +
       what + ', Monday through Friday, ' +
       esc(U.formatMinutes(U.slotStartMinutes(win.start))) + ' to ' +
       esc(U.formatMinutes(U.slotStartMinutes(win.end))) + '</caption><thead><tr>' +
@@ -95,7 +96,7 @@
           if (!item) {
             html += '<td class="' + cellClass('pv-empty', d, l, days[d].lanes) + '"></td>';
           } else if (item.startSlot === s) {
-            html += cellFor(item, cellClass('pv-block', d, l, days[d].lanes), days[d].lanes);
+            html += cellFor(item, cellClass('pv-block', d, l, days[d].lanes), days[d].lanes, rowPx);
           }
         }
       }
@@ -148,9 +149,25 @@
    * out before it is drawn: a table cell cannot tell its contents to give way
    * line by line. These are the print.css figures the budget rests on.
    */
-  var PAGE_PX = 979;       // 11in landscape less the 0.4in inset each side
+  /* Per orientation: the width inside the 0.4in inset each side, and the
+   * height the grid's rows get once the header, the band of classes and labs,
+   * the notes and the footer have theirs. The rows are sized to fill it,
+   * shared out over the half hours on the page; the budget leaves room for a
+   * few lines more of notes than the default, and the cap keeps a short day
+   * from turning into a poster. */
+  var PAGES = {
+    landscape: { width: 979, grid: 360 },   // 11 x 8.5in
+    portrait: { width: 739, grid: 600 }     // 8.5 x 11in
+  };
+  var page = PAGES.landscape;              // set from the schedule on each render
   var GUTTER_PX = 52;      // .pv-time
-  var ROW_PX = 14;         // .pv-table tbody tr
+  var ROW_MIN_PX = 14, ROW_MAX_PX = 34;
+
+  function rowPxFor(win) {
+    var rows = Math.max(1, win.end - win.start);
+    return Math.max(ROW_MIN_PX, Math.min(ROW_MAX_PX, Math.floor(page.grid / rows)));
+  }
+
   var LABEL_PX = 12;       // .pv-block__name, 8pt at line-height 1.1
   var LINE_PX = 10;        // .pv-block__who and __time, 6.5pt at about 1.15
 
@@ -166,6 +183,10 @@
   // Names are ordinary words, priced at a slightly generous average and wrapped
   // at spaces the way the browser will.
   var NAME_CHAR_PX = 4.6;
+
+  // A class code at 8pt bold. Wider than the lane -- three lanes to a day on a
+  // portrait page -- and it steps down to 6.5pt rather than lose a letter.
+  var CODE_CHAR_PX = 7.2;
 
   function nameLinesNeeded(text, width) {
     var lines = 1, used = 0;
@@ -196,19 +217,19 @@
    * what is left, ending in an ellipsis rather than half a line when they run
    * out of room.
    */
-  function subjectCell(run, labels, cls, lanes) {
+  function subjectCell(run, labels, cls, lanes, rowPx) {
     var colors = U.coverageColors(run, false);
     var spoken = run.subjects.map(function (i) { return U.SUBJECTS[i].label; });
     var who = namesOf(run.tutorIds, labels);
     var rows = run.endSlot - run.startSlot;
     // 4px bar, 3px padding each side and the borders, as measured.
-    var width = (PAGE_PX - GUTTER_PX) / U.DAYS / Math.max(1, lanes) - 11.5;
+    var width = (page.width - GUTTER_PX) / U.DAYS / Math.max(1, lanes) - 11.5;
 
     // Placed as a share of the block rather than in pixels, so each rule lands
     // on its hour however tall the rows come out.
     var pct = function (slots) { return (100 * slots / rows).toFixed(3) + '%'; };
     function layout(seg, i) {
-      var lines = Math.floor(((seg.endSlot - seg.startSlot) * ROW_PX - 3 -
+      var lines = Math.floor(((seg.endSlot - seg.startSlot) * rowPx - 3 -
         (i === 0 ? LABEL_PX : 0)) / LINE_PX);
 
       var full = U.formatRange(seg.startSlot, seg.endSlot);
@@ -216,9 +237,10 @@
       var out = { text: namesOf(seg.tutorIds, labels).join(', ') || 'unstaffed' };
       if (fitsOneLine(full, width)) {
         out.time = esc(full); out.timeLines = 1;
-      } else if (lines >= 3) {
+      } else if (lines >= 3 && fitsOneLine(range[0] + '–', width) && fitsOneLine(range[1], width)) {
         // Either end stays whole: "9:00 AM-" over "4:00 PM". Only with a line
-        // left for names; otherwise the short form keeps both on the page.
+        // left for names, and only where each end fits its line; otherwise the
+        // short form keeps both on the page.
         out.time = '<span class="pv-nowrap">' + esc(range[0]) + '–</span>' +
           '<span class="pv-nowrap">' + esc(range[1]) + '</span>';
         out.timeLines = 2;
@@ -230,6 +252,7 @@
       return out;
     }
 
+    var small = run.label.length * CODE_CHAR_PX > width;
     var merged = U.mergeCrampedSegments(run.segments, function (seg, i) {
       return layout(seg, i).fits;
     });
@@ -243,7 +266,8 @@
 
       return '<div class="pv-seg' + (i ? ' pv-seg--after' : '') + '" style="top:' +
           pct(seg.startSlot - run.startSlot) + ';height:' + pct(seg.endSlot - seg.startSlot) + '">' +
-        (i === 0 ? '<span class="pv-block__name">' + esc(run.label) + '</span>' : '') +
+        (i === 0 ? '<span class="pv-block__name' + (small ? ' pv-block__name--small' : '') + '">' +
+          esc(run.label) + '</span>' : '') +
         names + '<span class="pv-block__time">' + time + '</span>' +
         '</div>';
     }).join('');
@@ -254,7 +278,7 @@
       // Sized from the fixed row height rather than stretched to the cell:
       // positioning the cell itself would paint its fill over the table's
       // borders.
-      '<div class="pv-run" style="height:' + (rows * ROW_PX - 3) + 'px">' + segments + '</div>' +
+      '<div class="pv-run" style="height:' + (rows * rowPx - 3) + 'px">' + segments + '</div>' +
       // "AP1&2" is a label, not a sentence: a screen reader gets the classes
       // spelled out instead.
       '<span class="visually-hidden">' + esc(U.listSentence(spoken)) +
@@ -267,7 +291,7 @@
     var days = [];
     for (var d = 0; d < U.DAYS; d++) days.push(subjectLaneGrid(runs, d));
     return gridTable('Weekly class coverage', U.scheduleWindow(U.mainShifts(state.assignments)),
-      days, function (run, cls, lanes) { return subjectCell(run, labels, cls, lanes); });
+      days, function (run, cls, lanes, rowPx) { return subjectCell(run, labels, cls, lanes, rowPx); });
   }
 
   function buildSubjectLegend(runs) {
@@ -360,11 +384,14 @@
    */
   function buildHead(state) {
     var s = state.settings;
+    // Which 7 weeks this is, beside the semester: the two halves' handouts
+    // look alike, and one posted for the wrong half is easy to miss.
+    var term = [s.term, state.periods[state.activePeriod].label].filter(Boolean).join(' · ');
     return '<header class="pv-head">' +
       '<div class="pv-head__main">' +
         '<p class="pv-college">Chattanooga State Community College</p>' +
         '<h1>' + esc(s.title) + '</h1>' +
-        (s.term ? '<p class="pv-term">' + esc(s.term) + '</p>' : '') +
+        '<p class="pv-term">' + esc(term) + '</p>' +
         (s.effective ? '<p class="pv-subtitle">' + esc(s.effective) + '</p>' : '') +
         '<p class="pv-where">' + esc(s.location) + '</p>' +
       '</div>' +
@@ -409,21 +436,45 @@
       buildFoot(state, legendHtml);
   }
 
-  function render(container, state) {
-    var labels = U.displayNames(state.tutors);
-    var runs = U.coverageRuns(state.assignments, state.tutors);
-    var listing = state.settings.includeListing ? buildListing(state, labels) : '';
-
-    // Printed double sided, the two calendars are the two faces of one sheet.
-    // With the listing on, it follows each calendar instead, so each sheet
-    // carries a calendar on one face and the listing on the other.
-    container.innerHTML =
-      buildHandout(state, labels, buildTable(state, labels), buildLegend(state, labels)) +
+  /* One half's pages. Printed double sided, the two calendars are the two
+   * faces of one sheet. With the listing on, it follows each calendar instead,
+   * so each sheet carries a calendar on one face and the listing on the other.
+   */
+  function renderPeriod(view) {
+    var labels = U.displayNames(view.tutors);
+    var runs = U.coverageRuns(view.assignments, view.tutors);
+    var listing = view.settings.includeListing ? buildListing(view, labels) : '';
+    return '<section class="pv-period">' +
+      buildHandout(view, labels, buildTable(view, labels), buildLegend(view, labels)) +
       listing +
       '<section class="pv-coverage">' +
-        buildHandout(state, labels, buildSubjectTable(state, labels, runs), buildSubjectLegend(runs)) +
+        buildHandout(view, labels, buildSubjectTable(view, labels, runs), buildSubjectLegend(runs)) +
       '</section>' +
-      listing;
+      listing +
+      '</section>';
+  }
+
+  /* The page's size and orientation. print.css cannot read a setting, so the
+   * @page rule is written here, next to the pages it describes. */
+  function setPage(orientation) {
+    var portrait = orientation === 'portrait';
+    page = portrait ? PAGES.portrait : PAGES.landscape;
+    if (!doc) return;
+    var style = doc.getElementById('pv-page');
+    if (!style) {
+      style = doc.createElement('style');
+      style.id = 'pv-page';
+      style.media = 'print';
+      doc.head.appendChild(style);
+    }
+    style.textContent = '@page { size: letter ' + (portrait ? 'portrait' : 'landscape') + '; margin: 0; }';
+  }
+
+  // Both 7 weeks by default, one after the other, or whichever one the Print
+  // choice asks for.
+  function render(container, state) {
+    setPage(state.settings.orientation);
+    container.innerHTML = TS.store.printViews().map(renderPeriod).join('');
   }
 
   TS.printview = { render: render };

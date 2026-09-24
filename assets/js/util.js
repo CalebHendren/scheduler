@@ -7,7 +7,7 @@
    * commit and attaches the single-file build. Semantic versioning -- a new
    * feature is a minor bump, a fix is a patch.
    */
-  var VERSION = '1.4.0';
+  var VERSION = '1.5.0';
 
   var DAY_START_MIN = 7 * 60;      // 7:00 AM
   var SLOT_MINUTES = 30;
@@ -384,9 +384,10 @@
     return (Math.round((halfHours / 2) * 10) / 10) + ' h';
   }
 
-  /* ---- the handout's file name ----
-   * "Effective dates" is free text, typed however the term calendar reads, so
-   * the first date in it is found rather than required in one format:
+  /* ---- reading a date out of text ----
+   * Effective dates used to be free text, typed however the term calendar
+   * read, and a file from then still carries it. The first date in it
+   * becomes the start date on load, found rather than required in one format:
    * "Aug 24 – Dec 11", "August 24, 2026 - December 11, 2026", "8/24 - 12/11",
    * "2026-08-24". A start with no year of its own takes the next year written
    * in the text -- stepping back one when the dates run over New Year -- then
@@ -438,13 +439,54 @@
     return { year: year, month: start.month, day: start.day };
   }
 
+  /* ---- a 7-week half's dates ----
+   * Kept as ISO dates, "2026-08-24", which is what a date field reads and
+   * writes. Anything else -- blank, or a date that is not one -- is no date.
+   */
+  function parseIso(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    if (!m) return null;
+    var d = { year: +m[1], month: +m[2], day: +m[3] };
+    var check = new Date(d.year, d.month - 1, d.day);
+    return check.getMonth() === d.month - 1 && check.getDate() === d.day ? d : null;
+  }
+
+  function isoDate(d) {
+    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    return d ? d.year + '-' + pad(d.month) + '-' + pad(d.day) : '';
+  }
+
+  // Whether `today` falls after the day `iso` names -- the day after it ends.
+  function isPast(iso, today) {
+    var d = parseIso(iso);
+    if (!d) return false;
+    var now = today || new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate()) >
+      new Date(d.year, d.month - 1, d.day);
+  }
+
+  /* How the handout writes a half's dates: "Aug 24 – Oct 9, 2026", the year
+   * once when both ends share it, "Dec 1, 2026 – Jan 15, 2027" when not, and
+   * "From ..." or "Through ..." when only one end is known. */
+  var MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  function dateRangeLabel(startIso, endIso) {
+    var a = parseIso(startIso), b = parseIso(endIso);
+    var day = function (d) { return MONTH_ABBR[d.month - 1] + ' ' + d.day; };
+    var full = function (d) { return day(d) + ', ' + d.year; };
+    if (a && b) return a.year === b.year ? day(a) + ' – ' + full(b) : full(a) + ' – ' + full(b);
+    if (a) return 'From ' + full(a);
+    if (b) return 'Through ' + full(b);
+    return '';
+  }
+
   /* "Life Science Tutor Schedule 8-24-2026": the title and the day the
-   * schedule takes effect, or today when no start date is given. Used for the
-   * downloaded PDF and, as the page title while printing, for the name the
-   * browser offers when saving as PDF. */
+   * schedule takes effect -- settings.startDate, the printed half's start --
+   * or today when there is none. Used for the downloaded PDF and, as the page
+   * title while printing, for the name the browser offers when saving as PDF. */
   function handoutName(settings, today) {
     var now = today || new Date();
-    var d = effectiveStart(settings.effective, settings.term, now) ||
+    var d = parseIso(settings.startDate) ||
       { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
     var title = String(settings.title || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
     return (title || 'Tutor Schedule') + ' ' + d.month + '-' + d.day + '-' + d.year;
@@ -1178,6 +1220,10 @@
     hhmmToSlot: hhmmToSlot,
     hoursLabel: hoursLabel,
     effectiveStart: effectiveStart,
+    parseIso: parseIso,
+    isoDate: isoDate,
+    isPast: isPast,
+    dateRangeLabel: dateRangeLabel,
     handoutName: handoutName,
     subjectMask: subjectMask,
     maskToShort: maskToShort,

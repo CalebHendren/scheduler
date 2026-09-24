@@ -38,8 +38,21 @@
     <div class="toolbar__group" role="group" aria-label="Print the handout">
       <button type="button" class="btn" id="btn-print">Print / Save as PDF</button>
       <button type="button" class="btn" id="btn-pdf">Download PDF</button>
-      <!-- Outside the settings panel, which is re-rendered from state: it sits
-           with the buttons it changes. -->
+      <!-- Outside the settings panel, which is re-rendered from state: these sit
+           with the buttons they change. -->
+      <label class="toolbar__select" for="print-periods">Print
+        <select id="print-periods" class="select--auto">
+          <option value="both">Both 7 weeks</option>
+          <option value="0">1st 7 weeks only</option>
+          <option value="1">2nd 7 weeks only</option>
+        </select>
+      </label>
+      <label class="toolbar__select" for="page-orientation">Layout
+        <select id="page-orientation" class="select--auto">
+          <option value="landscape">Landscape</option>
+          <option value="portrait">Portrait</option>
+        </select>
+      </label>
       <label class="toolbar__check" title="Add the plain-text shift listing after each calendar">
         <input type="checkbox" id="include-listing"> Include text listing
       </label>
@@ -133,6 +146,11 @@
     <section class="panel" aria-labelledby="calendar-heading">
       <div class="panel__head">
         <h2 id="calendar-heading">Weekly schedule</h2>
+        <!-- The term runs as two 7-week halves, each with a week of its own.
+             Everything on the page -- the grid, the stats, the handout -- is
+             the half picked here. -->
+        <div class="period-switch" role="radiogroup" aria-label="Which 7 weeks" id="period-switch"></div>
+        <button type="button" class="btn btn--small btn--quiet" id="btn-copy-period" hidden>Copy the 1st 7 weeks</button>
         <button type="button" class="btn btn--small" id="btn-add-shift">Add shift</button>
         <div class="toolbar__spacer"></div>
         <span class="field__hint" id="calendar-hint">Drag a block to move it, drag its edge to resize. Hover one to lock or remove it, or press L or Delete.</span>

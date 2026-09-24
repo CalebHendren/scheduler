@@ -10,7 +10,7 @@ Enter your tutors, check the classes each one can tutor, paint their availabilit
 and post — with a QR code students can scan to book a tutoring appointment. Shifts held somewhere
 other than IMC 270 — **Floating Embedded Tutors** sitting in a class, **Open Labs** in another
 room — are [listed beside the calendar](#embedded-classes-and-open-labs) rather than drawn in
-it.
+it. The term runs as [two 7-week halves](#the-two-7-week-halves), each with a week of its own.
 
 **Live version:** https://calebhendren.github.io/scheduler/
 **Offline version:** download `scheduler-local.html` from the
@@ -35,7 +35,8 @@ it.
    shift](#three-ways-to-place-a-shift).
 5. Adjust by hand — drag a block to move it, drag its edge to resize, lock the ones
    that are settled.
-6. **Print / Save as PDF** for the handout.
+6. Switch to the **2nd 7 weeks** above the calendar and change whatever is different there.
+7. **Print / Save as PDF** for the handout.
 
 There is no account and no server. Everything stays in your browser.
 
@@ -101,6 +102,36 @@ press.
 - **Everything** — **Lock all shifts** in the toolbar, once the week is finished.
 
 Each button turns into its own undo (**Unlock all**) when everything under it is locked.
+
+## The two 7-week halves
+
+The term runs as two 7-week halves, and a half can have a week of its own — a tutor whose
+classes change at the midpoint, say. The switch above the calendar picks which one you are
+working on: **1st 7 weeks** or **2nd 7 weeks**.
+
+- **The 2nd starts as a copy of the 1st.** The first time you open it, it copies every shift
+  from the 1st — embedded classes and open labs too, rooms and all; change what is different
+  and leave the rest. The two are independent from then on — editing one never touches the
+  other.
+- **Copy the 1st 7 weeks** (beside the switch, on the 2nd) starts the 2nd over from the 1st, if
+  it has drifted. It asks first, and **Ctrl+Z** undoes it.
+- **Each half has its own start and end dates**, both halves' under **Schedule settings →
+  7-week dates**. The handout prints them — *Aug 24 – Oct 9, 2026* — and the start date names
+  the saved PDF.
+- **The schedule opens on the half in effect.** Once the day after the 1st's end date has come,
+  opening the schedule shows the 2nd 7 weeks, and says so; before it, the 1st. With no end date
+  set, it opens on whichever half was left on screen.
+- **Everything else is shared** — the roster, the classes, the rules, the notes.
+- **Everything you do is to the half on screen.** Auto-optimize, Clear schedule, Lock all, the
+  stats and **Uncovered time** all work on it alone. Removing a tutor, or narrowing their
+  availability, is true of the whole term, so it clears their shifts from both.
+- **The handout carries both halves** until the 1st is over — see
+  [Printing and PDFs](#printing-and-pdfs) — and each half's pages say which it is under the
+  semester, *Fall 2026 · 2nd 7 weeks*, so the posted sheets cannot be mixed up.
+
+One **Export JSON** file carries both halves, their dates, and which one was open. A file from
+before the halves loads as the 1st 7 weeks, and the first date in its old free-text
+**Effective dates** becomes the 1st's start.
 
 ## Embedded classes and open labs
 
@@ -246,7 +277,7 @@ Note that all local files share one storage area per browser, so two copies of
 
 Because storage is per-browser, use **Export** to move between machines or keep a backup:
 
-- **Export / Import JSON** — the whole thing: tutors, settings and the schedule itself.
+- **Export / Import JSON** — the whole thing: tutors, settings and both 7-week schedules.
 - **Export / Import CSV** — just the tutor roster, for editing in Excel or Google Sheets.
 
 ### The CSV format
@@ -281,23 +312,35 @@ Two buttons, for two different needs:
 
 - **Print / Save as PDF** — the one to use for anything you hand out or post. It prints from a
   real HTML table with proper row and column headers, so the PDF Chrome and Edge produce has
-  selectable text, keeps its table structure, and carries a document language. Two pages: the
-  calendar, the notes, the QR code and the legend on page 1, and **Coverage by class** on
-  page 2 — printed double sided, one sheet with a calendar on each face.
+  selectable text, keeps its table structure, and carries a document language. Each 7 weeks is
+  two pages: the calendar, the notes, the QR code and the legend, then **Coverage by class** —
+  printed double sided, one sheet with a calendar on each face.
 - **Download PDF** — one click, no print dialog, drawn directly with jsPDF. Same pages,
-  same landscape layout and real text (nothing is a screenshot), but jsPDF does not emit a
+  same layout and real text (nothing is a screenshot), but jsPDF does not emit a
   tagged structure tree, so it is the convenience option rather than the accessible one.
 
-Either way the file is named for the schedule and the day it takes effect — *Life Science Tutor
-Schedule 8-24-2026* — from the first date in **Effective dates** under **Schedule settings**.
-Any usual way of writing it works (`Aug 24 – Dec 11`, `8/24/2026 - 12/11/2026`, `2026-08-24`);
-a date with no year takes the one in the semester name. With no effective date, today's date is
-used. Print / Save as PDF gets the name by putting it in the page title while printing, which is
-what Chrome and Edge offer as the file name.
+The **Layout** choice beside them turns the pages **Landscape** (the default) or **Portrait**.
+It is saved with the schedule, so it comes back the next time and travels in **Export JSON**.
+Either way the grid's rows are sized to fill the page.
+
+The **Print** choice beside the buttons says which 7 weeks go in the document:
+
+- **Both 7 weeks** — the default while the 1st 7 weeks is under way: one document, the 1st's two
+  pages then the 2nd's, four pages in all. A 2nd 7 weeks never opened prints as the copy of
+  the 1st it would open as.
+- **2nd 7 weeks only** — the default once the 1st has ended (the day after its end date under
+  **7-week dates**), since a sheet for weeks already gone is not one to post.
+- **1st 7 weeks only** — the 1st alone.
+
+A choice lasts until the page is closed, so the next visit starts from the dates again. Either
+way the file is named for the schedule and the day the first half in it starts — *Life Science
+Tutor Schedule 8-24-2026* — or today, with no start date set. Print / Save as PDF gets the
+name by putting it in the page title while printing, which is what Chrome and Edge offer as the
+file name.
 
 Tick **Include text listing** beside the two buttons to add a plain-text listing of every
-shift, in two columns, after each calendar. That makes four pages — calendar, listing, coverage
-by class, listing — so a double-sided print gives a sheet with a calendar on one face and the
+shift, in two columns, after each calendar. That makes four pages a half — calendar, listing,
+coverage by class, listing — so a double-sided print gives a sheet with a calendar on one face and the
 listing on the other, whichever sheet someone picks up. It is off by default.
 
 ### Coverage by class
@@ -334,10 +377,10 @@ says `AP2` rather than pretending otherwise.
 Only hours at the center count. An embedded tutor sitting in a class across campus is their
 time but not the center's cover, and is left out here exactly as it is left out of the grid.
 
-Both are landscape US Letter. Printing always uses the light theme even if you are working in
-dark mode. The print stylesheet sets a zero `@page` margin and insets the handout itself, which
-is what keeps Chrome and Edge from stamping the document title across the top of the page and
-the page URL across the bottom — there is no CSS switch for those, only the margin they are
+Both are US Letter, landscape or portrait as **Layout** says. Printing always uses the light
+theme even if you are working in dark mode. The print stylesheet sets a zero `@page` margin and
+insets the handout itself, which is what keeps Chrome and Edge from stamping the document title
+across the top of the page and the page URL across the bottom — there is no CSS switch for those, only the margin they are
 drawn into. Both carry the semester, the location and contact, the QR code, a tutor legend and
 the important notes, plus the plain-text listing when it is turned on.
 

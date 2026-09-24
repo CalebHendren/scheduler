@@ -86,6 +86,8 @@
     $('qr-book').hidden = !s.qrUrl;
 
     $('include-listing').checked = !!s.includeListing;
+    $('print-periods').value = TS.store.printPeriods();
+    $('page-orientation').value = s.orientation === 'portrait' ? 'portrait' : 'landscape';
   }
 
   function renderStats(state) {
@@ -137,7 +139,9 @@
     sample: 'loading the sample roster', reset: 'starting over',
     settings: 'a settings change', 'import-csv': 'a CSV import',
     'import': 'an import', replace: 'loading a file', theme: 'a theme change',
-    listing: 'turning the text listing on or off'
+    listing: 'turning the text listing on or off',
+    period: 'switching to the other 7 weeks', 'copy-period': 'copying the other 7 weeks',
+    dates: 'a change to the 7-week dates', orientation: 'a change to the page layout'
   };
 
   function renderUndo() {
@@ -199,6 +203,7 @@
       onLock: setShiftLock,
       onAdd: addShiftByDialog
     });
+    renderPeriods(state);
     renderCalendarHint(state);
     renderLockAll(state);
     $('btn-email-all').disabled = !tutorEmails(state).length;
@@ -226,19 +231,21 @@
       Object.keys(payload).forEach(function (k) { tutor[k] = payload[k]; });
 
       // Shifts that no longer fit the edited availability would otherwise sit
-      // there invisibly breaking the rules.
-      var dropped = 0;
-      TS.store.state.assignments = TS.store.state.assignments.filter(function (a) {
+      // there invisibly breaking the rules -- in either 7 weeks.
+      var dropped = TS.store.filterShifts(function (a) {
         if (a.tutorId !== id) return true;
         for (var s = a.startSlot; s < a.endSlot; s++) {
-          if (!tutor.availability[U.idx(a.day, s)]) { dropped++; return false; }
+          if (!tutor.availability[U.idx(a.day, s)]) return false;
         }
         return true;
       });
       TS.store.commit('edit-tutor');
-      if (dropped) {
-        notice(dropped + ' shift(s) were removed because they fell outside ' +
-          tutor.firstName + '’s new availability.', 'warn');
+      var total = dropped[0] + dropped[1];
+      if (total) {
+        notice(total + ' shift(s) were removed because they fell outside ' +
+          tutor.firstName + '’s new availability' +
+          (dropped[0] && dropped[1] ? ', across both 7 weeks.'
+            : ', in the ' + TS.store.PERIOD_LABELS[dropped[0] ? 0 : 1] + '.'), 'warn');
       }
     });
   }
@@ -280,6 +287,46 @@
       notice('Opened an email to ' + emails.length + ' tutor(s). No email on file for ' +
         U.listSentence(missing) + '.', 'warn');
     }
+  }
+
+  /* ---- the two 7-week halves --------------------------------------------- */
+
+  function renderPeriods(state) {
+    $('period-switch').innerHTML = state.periods.map(function (p, i) {
+      var on = i === state.activePeriod;
+      return '<button type="button" role="radio" data-period="' + i + '" aria-checked="' + on +
+        '" tabindex="' + (on ? 0 : -1) + '">' + esc(p.label) + '</button>';
+    }).join('');
+    var copy = $('btn-copy-period');
+    copy.hidden = state.activePeriod === 0;
+    copy.textContent = 'Copy the ' + state.periods[0].label;
+  }
+
+  function choosePeriod(index) {
+    var state = TS.store.state;
+    // A run in progress is building the half on screen; left going, it would
+    // land in whichever half was showing when it finished.
+    if (running) cancelOptimize();
+    var fresh = state.periods[index] && !state.periods[index].assignments;
+    if (!TS.store.switchPeriod(index)) return;
+    TS.store.commit('period');
+    if (fresh) {
+      notice('The ' + TS.store.activePeriodLabel() + ' starts as a copy of the ' +
+        state.periods[1 - index].label + '. Change whatever is different; the other ' +
+        'half is not touched. Its dates are under Schedule settings.', 'info');
+    }
+  }
+
+  // Starts the 2nd 7 weeks over from the 1st, for when it has drifted.
+  function copyPeriod() {
+    var state = TS.store.state;
+    var other = state.periods[1 - state.activePeriod].label;
+    if (state.assignments.length && !root.confirm('Replace the ' + TS.store.activePeriodLabel() +
+        ' with a copy of the ' + other + '?')) return;
+    TS.store.copyOtherPeriod();
+    TS.store.commit('copy-period');
+    notice('The ' + TS.store.activePeriodLabel() + ' is a copy of the ' + other +
+      ' again. Ctrl+Z puts it back.', 'info');
   }
 
   /* ---- building by hand -------------------------------------------------- */
@@ -593,9 +640,6 @@
     { group: 'Handout' },
     { key: 'title', label: 'Schedule title', type: 'text' },
     { key: 'term', label: 'Semester', type: 'text', placeholder: 'Fall 2026' },
-    { key: 'effective', label: 'Effective dates', type: 'text', placeholder: 'Aug 24 – Dec 11',
-      hint: 'The first date goes in the saved PDF’s name, after the title: ' +
-        '“… Schedule 8-24-2026”. Left blank, today’s date is used.' },
     { key: 'notes', label: 'Important notes', type: 'textarea',
       placeholder: 'Closures, the last day of tutoring, anything else on the handout' },
     { key: 'location', label: 'Location (the main calendar)', type: 'text',
@@ -646,6 +690,23 @@
         '</div>';
     });
     html += '</fieldset>';
+
+    // Both halves' dates, whichever half is on screen.
+    html += '<fieldset><legend>7-week dates</legend>' +
+      state.periods.map(function (p, i) {
+        var field = function (edge, label) {
+          var id = 'set-period-' + i + '-' + edge;
+          return '<div class="field"><label for="' + id + '">' + label + '</label>' +
+            '<input type="date" id="' + id + '" data-period="' + i + '" data-edge="' + edge +
+            '" value="' + esc(p[edge]) + '"></div>';
+        };
+        return '<div class="period-dates"><div class="period-dates__name">' + esc(p.label) + '</div>' +
+          '<div class="grid-2">' + field('start', 'Starts') + field('end', 'Ends') + '</div></div>';
+      }).join('') +
+      '<p class="field__hint">Printed on each half’s handout, and the start date names the saved ' +
+      'PDF. Once the 1st 7 weeks has ended, the schedule opens on the 2nd and prints only the ' +
+      '2nd unless you pick otherwise.</p>' +
+      '</fieldset>';
 
     html += '<fieldset><legend>Classes</legend>' +
       '<p class="field__hint" style="margin-top:0">What the tutors are here to help with. ' +
@@ -726,6 +787,17 @@
       var numKey = t.getAttribute('data-setting-num');
       var boolKey = t.getAttribute('data-setting-bool');
       var classKey = t.getAttribute('data-class-key');
+      var period = t.getAttribute('data-period');
+
+      if (period !== null) {
+        var half = TS.store.state.periods[+period];
+        half[t.getAttribute('data-edge')] = t.value;
+        TS.store.commit('dates');
+        if (U.parseIso(half.start) && U.parseIso(half.end) && half.end < half.start) {
+          notice('The ' + half.label + ' ends before it starts. Check its dates under Schedule settings.', 'warn');
+        }
+        return;
+      }
 
       if (classKey) {
         // The key stays put while the wording changes, so renaming a class
@@ -837,7 +909,7 @@
 
       if (replace) {
         TS.store.state.tutors = [];
-        TS.store.state.assignments = [];
+        TS.store.filterShifts(function () { return false; });
       }
       result.tutors.forEach(function (t) { TS.store.addTutor(t); });
       TS.store.commit('import-csv');
@@ -854,6 +926,21 @@
     $('btn-cancel').addEventListener('click', cancelOptimize);
     $('btn-add-tutor').addEventListener('click', addTutor);
     $('btn-email-all').addEventListener('click', emailAll);
+    $('include-listing').addEventListener('change', function (e) {
+      TS.store.state.settings.includeListing = e.target.checked;
+      TS.store.commit('listing');
+    });
+    // Not a change to the schedule, so not saved or undoable: which halves to
+    // print, until the page is closed.
+    $('print-periods').addEventListener('change', function (e) {
+      TS.store.setPrintPeriods(e.target.value);
+      TS.printview.render($('print-view'), TS.store.state);
+    });
+    // The handout's page, saved with the schedule.
+    $('page-orientation').addEventListener('change', function (e) {
+      TS.store.state.settings.orientation = e.target.value;
+      TS.store.commit('orientation');
+    });
     $('include-listing').addEventListener('change', function (e) {
       TS.store.state.settings.includeListing = e.target.checked;
       TS.store.commit('listing');
@@ -877,7 +964,7 @@
     var screenTitle = null;
     root.addEventListener('beforeprint', function () {
       if (screenTitle === null) screenTitle = doc.title;
-      doc.title = U.handoutName(TS.store.state.settings);
+      doc.title = TS.store.printName();
     });
     root.addEventListener('afterprint', function () {
       if (screenTitle !== null) doc.title = screenTitle;
@@ -932,6 +1019,19 @@
     });
 
     $('btn-add-shift').addEventListener('click', function () { addShiftByDialog('main'); });
+    $('period-switch').addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-period]');
+      if (btn) choosePeriod(+btn.getAttribute('data-period'));
+    });
+    $('period-switch').addEventListener('keydown', function (e) {
+      // A radio group moves with the arrow keys.
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      choosePeriod(1 - TS.store.state.activePeriod);
+      var now = $('period-switch').querySelector('[aria-checked="true"]');
+      if (now) now.focus();
+    });
+    $('btn-copy-period').addEventListener('click', copyPeriod);
 
     TS.calendar.attach($('calendar'), function () { return TS.store.state; }, {
       onChange: renderAll,
@@ -970,6 +1070,8 @@
 
   function boot() {
     var loaded = TS.store.load();
+    // The half in effect today, once the dates say which that is.
+    var moved = loaded && TS.store.openPeriodInEffect();
     $('app-version').textContent = 'Version ' + U.VERSION + '.';
     TS.theme.init(TS.store.state.settings.theme);
     $('theme-select').value = TS.store.state.settings.theme;
@@ -979,6 +1081,12 @@
 
     wire();
     renderAll();
+
+    if (moved) {
+      var st = TS.store.state;
+      notice('Showing the ' + TS.store.activePeriodLabel() + ': the ' + st.periods[0].label +
+        ' ended ' + U.dateRangeLabel('', st.periods[0].end).replace('Through ', '') + '.', 'info');
+    }
 
     if (!TS.store.storageAvailable()) {
       var hint = $('save-hint');

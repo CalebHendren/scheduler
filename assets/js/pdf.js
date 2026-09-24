@@ -64,6 +64,18 @@
     pdf.rect(x, y - 6, 3, 8, 'F');
   }
 
+  /* A portrait day column split three ways is narrow, and a name cut to
+   * "Natha..." is no name at all: the text steps down through `sizes` until it
+   * fits, and is only cut short at the smallest. Leaves the font at that size.
+   */
+  function fitText(pdf, text, width, sizes) {
+    for (var i = 0; i < sizes.length; i++) {
+      pdf.setFontSize(sizes[i]);
+      if (pdf.getTextWidth(text) <= width) return text;
+    }
+    return truncate(pdf, text, width);
+  }
+
   /* Each kind held somewhere other than the center, as one labelled run of
    * text. The same footnote the old handouts carried, and cheap enough on a
    * crowded page: "Floating Embedded Tutors: Bailey Tue & Thu 12:30-2:00 PM
@@ -117,7 +129,10 @@
       pdf.line(g.margin + g.gutterW, y, g.pageW - g.margin, y);
       if (onHour || slot === g.win.end) {
         pdf.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-        pdf.text(U.formatMinutes(U.slotStartMinutes(slot)), g.margin + g.gutterW - 4, y + 3, { align: 'right' });
+        // The first label sits just under its line, where the day band above
+        // would otherwise cover it.
+        pdf.text(U.formatMinutes(U.slotStartMinutes(slot)), g.margin + g.gutterW - 4,
+          slot === g.win.start ? y + 6 : y + 3, { align: 'right' });
       }
     }
   }
@@ -172,8 +187,7 @@
         var textW = bw - 8;
         pdf.setTextColor(INK[0], INK[1], INK[2]);
         pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(7.5);
-        pdf.text(truncate(pdf, labels[tutor.id], textW), textX, by + 8);
+        pdf.text(fitText(pdf, labels[tutor.id], textW, [7.5, 6.5, 6]), textX, by + 8);
 
         if (bh > 20) {
           pdf.setFont('helvetica', 'normal');
@@ -183,8 +197,7 @@
         if (bh > 28) {
           var shorts = U.maskToShort(U.subjectMask(tutor.subjects)).join(' · ') || '—';
           pdf.setFont('helvetica', 'bold');
-          pdf.setFontSize(6);
-          pdf.text(truncate(pdf, shorts, textW), textX, by + 24);
+          pdf.text(fitText(pdf, shorts, textW, [6, 5.5, 5]), textX, by + 24);
         }
       });
     }
@@ -225,8 +238,7 @@
         var textW = bw - 6;
         pdf.setTextColor(INK[0], INK[1], INK[2]);
         pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(7.5);
-        pdf.text(truncate(pdf, run.label, textW), textX, by + 8);
+        pdf.text(fitText(pdf, run.label, textW, [7.5, 6.5, 6]), textX, by + 8);
 
         // The first stretch starts under the class code; the rest under
         // their rule.
@@ -279,8 +291,9 @@
     var dash = range.indexOf('–');
     var timeLines = !room ? []
       : pdf.getTextWidth(range) <= width ? [range]
-      : room >= 3 && dash !== -1
-        ? [truncate(pdf, range.slice(0, dash + 1), width), truncate(pdf, range.slice(dash + 1), width)]
+      : room >= 3 && dash !== -1 && pdf.getTextWidth(range.slice(0, dash + 1)) <= width &&
+          pdf.getTextWidth(range.slice(dash + 1)) <= width
+        ? [range.slice(0, dash + 1), range.slice(dash + 1)]
         : [fitRange(pdf, seg.startSlot, seg.endSlot, width)];
 
     var nameRoom = room - timeLines.length;
@@ -316,13 +329,23 @@
     return truncate(pdf, U.formatMinutes(U.slotStartMinutes(startSlot), { omitSuffix: true }), width);
   }
 
-  function drawTutorLegend(pdf, state, labels, legendX, legendY) {
+  /* A legend reads down columns of four, as many columns as the roster needs.
+   * Where the space beside the QR block is too narrow for that -- a portrait
+   * page -- the columns run deeper and, failing that, narrower, so the legend
+   * stays on the page. */
+  function legendGrid(count, width, minW, maxW) {
+    var fit = Math.max(1, Math.floor(width / minW));
+    var rows = count <= fit * 4 ? 4 : Math.min(6, Math.ceil(count / fit));
+    var cols = Math.max(1, Math.ceil(count / rows));
+    return { rows: rows, colW: Math.min(maxW, width / cols) };
+  }
+
+  function drawTutorLegend(pdf, state, labels, legendX, legendY, width) {
+    var grid = legendGrid(state.tutors.length, width, 130, 160);
     pdf.setFontSize(7);
     state.tutors.forEach(function (t, i) {
-      var col = Math.floor(i / 4);
-      var rowI = i % 4;
-      var lx = legendX + col * 130;
-      var ly = legendY + rowI * 12;
+      var lx = legendX + Math.floor(i / grid.rows) * grid.colW;
+      var ly = legendY + (i % grid.rows) * 12;
       drawSwatch(pdf, U.blockColors(t.colorIndex, false), lx, ly);
 
       pdf.setFont('helvetica', 'bold');
@@ -331,7 +354,7 @@
       pdf.setFont('helvetica', 'normal');
       pdf.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
       pdf.text(
-        truncate(pdf, U.maskToShort(U.subjectMask(t.subjects)).join(' · ') || '—', 46),
+        truncate(pdf, U.maskToShort(U.subjectMask(t.subjects)).join(' · ') || '—', grid.colW - 84),
         lx + 20 + 62, ly
       );
     });
@@ -340,23 +363,22 @@
   /* Wider columns than the tutor legend, because a class name is longer than a
    * first name and there are only ever a handful of them.
    */
-  function drawClassLegend(pdf, state, legendX, legendY) {
+  function drawClassLegend(pdf, state, legendX, legendY, width) {
     var lanes = U.coverageLanes();
     var totals = U.coverageLaneHours(U.coverageRuns(state.assignments, state.tutors));
+    var grid = legendGrid(lanes.length, width, 175, 175);
     pdf.setFontSize(7);
     lanes.forEach(function (lane, i) {
-      var col = Math.floor(i / 4);
-      var rowI = i % 4;
-      var lx = legendX + col * 175;
-      var ly = legendY + rowI * 12;
+      var lx = legendX + Math.floor(i / grid.rows) * grid.colW;
+      var ly = legendY + (i % grid.rows) * 12;
       drawSwatch(pdf, U.laneColors(lane, false), lx, ly);
 
       pdf.setFont('helvetica', 'bold');
       pdf.setTextColor(INK[0], INK[1], INK[2]);
-      pdf.text(truncate(pdf, U.laneLabel(lane), 100), lx + 20, ly);
+      pdf.text(truncate(pdf, U.laneLabel(lane), grid.colW - 75), lx + 20, ly);
       pdf.setFont('helvetica', 'normal');
       pdf.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-      pdf.text(truncate(pdf, U.hoursLabel(totals[i]) + ' a week', 48), lx + 20 + 105, ly);
+      pdf.text(truncate(pdf, U.hoursLabel(totals[i]) + ' a week', 48), lx + grid.colW - 50, ly);
     });
   }
 
@@ -420,7 +442,9 @@
 
     var s = state.settings;
     var labels = U.displayNames(state.tutors);
-    var pdf = new root.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+    var pdf = new root.jspdf.jsPDF({
+      orientation: s.orientation === 'portrait' ? 'portrait' : 'landscape', unit: 'pt', format: 'letter'
+    });
 
     pdf.setProperties({
       title: s.title + (s.term ? ' — ' + s.term : ''),
@@ -434,25 +458,31 @@
     var pageH = pdf.internal.pageSize.getHeight();
     var margin = 28;
 
-    /* The tutor calendar, then the same handout with the week read by class.
-     * Printed double sided, those are the two faces of one sheet. With the
-     * listing turned on, it follows each calendar instead, so each sheet then
-     * carries a calendar on one face and the listing on the other.
+    /* For each 7 weeks printed -- both by default -- the tutor calendar, then
+     * the same handout with the week read by class. Printed double sided,
+     * those are the two faces of one sheet. With the listing turned on, it
+     * follows each calendar instead, so each sheet then carries a calendar on
+     * one face and the listing on the other.
      */
     var listing = !!s.includeListing;
-    drawCalendarPage(pdf, state, labels, pageW, pageH, margin, false);
-    if (listing) {
-      pdf.addPage();
-      drawListing(pdf, state, labels, pageW, pageH, margin);
-    }
-    pdf.addPage();
-    drawCalendarPage(pdf, state, labels, pageW, pageH, margin, true);
-    if (listing) {
-      pdf.addPage();
-      drawListing(pdf, state, labels, pageW, pageH, margin);
-    }
+    var first = true;
+    var page = function () { if (!first) pdf.addPage(); first = false; };
+    TS.store.printViews().forEach(function (view) {
+      page();
+      drawCalendarPage(pdf, view, labels, pageW, pageH, margin, false);
+      if (listing) {
+        page();
+        drawListing(pdf, view, labels, pageW, pageH, margin);
+      }
+      page();
+      drawCalendarPage(pdf, view, labels, pageW, pageH, margin, true);
+      if (listing) {
+        page();
+        drawListing(pdf, view, labels, pageW, pageH, margin);
+      }
+    });
 
-    return { pdf: pdf, filename: U.handoutName(s) + '.pdf' };
+    return { pdf: pdf, filename: TS.store.printName() + '.pdf' };
   }
 
   /* A whole handout page: the header, the week, the band of shifts held
@@ -475,13 +505,14 @@
     pdf.text(s.title, margin, margin + 26);
 
     var whereY = margin + 40;
-    if (s.term) {
-      pdf.setFont('times', 'bold');
-      pdf.setFontSize(12);
-      pdf.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
-      pdf.text(s.term, margin, whereY);
-      whereY += 12;
-    }
+    // Which 7 weeks this is, beside the semester: the two halves' handouts
+    // look alike, and one posted for the wrong half is easy to miss.
+    pdf.setFont('times', 'bold');
+    pdf.setFontSize(12);
+    pdf.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
+    pdf.text([s.term, state.periods[state.activePeriod].label].filter(Boolean).join(' · '),
+      margin, whereY);
+    whereY += 12;
     if (s.effective) {
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(9);
@@ -621,7 +652,8 @@
 
     // The link itself is left off the page: it is long and carries an id
     // nobody would type, so the code is what gets used.
-    var qrTextW = 170;
+    // Narrower beside the QR on a portrait page, to leave the legend its room.
+    var qrTextW = pageW > pageH ? 170 : 140;
     var qrY = footY + 10;
     pdf.setTextColor(INK[0], INK[1], INK[2]);
     pdf.setFont('helvetica', 'bold');
@@ -636,10 +668,11 @@
       qrY += 11;
     });
 
-    var legendX = margin + 260;
+    var legendX = margin + 90 + qrTextW;
     var legendY = footY + 6;
-    if (byClass) drawClassLegend(pdf, state, legendX, legendY);
-    else drawTutorLegend(pdf, state, labels, legendX, legendY);
+    var legendW = pageW - margin - legendX;
+    if (byClass) drawClassLegend(pdf, state, legendX, legendY, legendW);
+    else drawTutorLegend(pdf, state, labels, legendX, legendY, legendW);
   }
 
   function download(state) {
