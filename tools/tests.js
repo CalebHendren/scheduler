@@ -554,6 +554,24 @@
     var jo = 0;
     for (var m = 0; m < U.TOTAL_SLOTS; m++) jo += messy.tutors[0].availability[m] ? 1 : 0;
     r.eq(jo, 12, '"Tues/Thurs 1-4pm" is 6 hours across two days');
+
+    // Emails ride along in the spreadsheet, and a file without the column
+    // still imports with the addresses simply left blank.
+    var mailed = TS.store.normalizeTutor({ firstName: 'Ada', lastName: 'Lo', email: ' ada@example.edu ',
+      subjects: { bio: true }, availability: [] });
+    r.eq(mailed.email, 'ada@example.edu', 'a tutor keeps their email, trimmed');
+    r.eq(TS.store.normalizeTutor({ firstName: 'Nobody' }).email, '', 'and has none by default');
+    var mailBack = TS.csv.importTutors(TS.csv.exportTutors([mailed]));
+    r.eq(mailBack.tutors[0].email, 'ada@example.edu', 'a CSV round trip keeps the email');
+    r.eq(messy.tutors[0].email, '', 'a file with no Email column imports with no email');
+
+    // The template is what people copy, so its columns have to line up.
+    var template = TS.csv.importTutors(TS.csv.templateCsv());
+    r.eq(template.warnings.length, 0, 'the template imports without warnings',
+      template.warnings.join(' | '));
+    r.eq(template.tutors[0].availability.filter(function (v) { return v; }).length, 30,
+      'the template\'s availability lands in the Availability column (15 hours)');
+    r.eq(template.tutors[0].email, 'aharden@example.edu', 'and its email in the Email column');
   }
 
   /* ---- 4. the ten-tutor fixture ------------------------------------------ */
@@ -1148,6 +1166,30 @@
     r.eq(old.settings.maxConcurrent, 2, 'while a cap someone chose is kept');
     r.eq(TS.store.normalizeTutor({ firstName: 'New', availability: [] }).maxHoursPerWeek, 20,
       'a tutor with no figure of their own gets the 20-hour default');
+
+    // The handout's QR books an appointment, and the text listing is optional.
+    var slate = 'https://slate.chattanoogastate.edu/register/?id=a69c0cfb-95a8-48a2-860f-b38c6a4795aa';
+    r.eq(s.qrUrl, slate, 'the QR code links to the appointment page, id and all');
+    r.eq(s.includeListing, false, 'the text listing is off by default');
+    r.eq(s.location, 'Academic Success Center (IMC 270)', 'the center has its new name');
+
+    var older = TS.store.migrate({
+      settings: { qrUrl: 'https://www.tutor.com', qrCaption: 'Free 24/7 online tutoring',
+        location: 'Student Success Center (IMC 270)', title: 'Kept' },
+      tutors: [], assignments: []
+    });
+    r.eq(older.settings.qrUrl, slate, 'a saved tutor.com link becomes the appointment link');
+    r.eq(older.settings.qrCaption, s.qrCaption, 'along with its old default caption');
+    r.eq(older.settings.location, 'Academic Success Center (IMC 270)',
+      'and a saved "Student Success Center" is renamed');
+    r.eq(older.settings.includeListing, false, 'an older file gets the listing setting\'s default');
+    r.eq(older.settings.title, 'Kept', 'while everything else in it is kept');
+
+    var custom = TS.store.migrate({ settings: { qrUrl: 'https://example.edu/help', qrCaption: 'Mine',
+      includeListing: true }, tutors: [], assignments: [] });
+    r.eq(custom.settings.qrUrl, 'https://example.edu/help', 'a link someone chose is left alone');
+    r.eq(custom.settings.qrCaption, 'Mine', 'and so is their caption');
+    r.eq(custom.settings.includeListing, true, 'and so is the listing turned on');
   }
 
   /* ---- 10. the evening cap ----------------------------------------------- */

@@ -15,7 +15,7 @@
    * was renamed still lines up.
    */
   function columnsFor(subjects) {
-    return ['First', 'Last']
+    return ['First', 'Last', 'Email']
       .concat((subjects || U.SUBJECTS).map(function (s) { return s.short; }))
       .concat(TAIL_COLUMNS);
   }
@@ -77,23 +77,12 @@
     f: 4, fr: 4, fri: 4, friday: 4
   };
 
-  function runsForDay(avail, day) {
-    var runs = [];
-    var start = null;
-    for (var s = 0; s <= U.SLOTS_PER_DAY; s++) {
-      var on = s < U.SLOTS_PER_DAY && avail[U.idx(day, s)];
-      if (on && start === null) start = s;
-      else if (!on && start !== null) { runs.push([start, s]); start = null; }
-    }
-    return runs;
-  }
-
   function formatAvailability(avail) {
     var signatures = [];
     var bySignature = {};
 
     for (var d = 0; d < U.DAYS; d++) {
-      var runs = runsForDay(avail, d);
+      var runs = U.availabilityRuns(avail, d);
       if (!runs.length) continue;
       var sig = runs.map(function (r) {
         return U.minutesToHhmm(U.slotStartMinutes(r[0])) + '-' + U.minutesToHhmm(U.slotStartMinutes(r[1]));
@@ -116,7 +105,7 @@
     var h = parseInt(m[1], 10);
     var min = m[2] ? parseInt(m[2], 10) : 0;
     if (h > 24 || min > 59) return null;
-    return { hour: h, minute: min, meridiem: m[3] || null, hadColon: !!m[2] };
+    return { hour: h, minute: min, meridiem: m[3] || null };
   }
 
   function withMeridiem(parts, meridiem) {
@@ -132,17 +121,8 @@
    * a shift starting at 1:00 AM.
    */
   function resolveBare(parts) {
-    if (parts.hadColon && parts.hour >= 13) return parts.hour * 60 + parts.minute;
-    if (parts.hour >= 13) return parts.hour * 60 + parts.minute;
-    if (parts.hour >= 1 && parts.hour <= 6) return (parts.hour + 12) * 60 + parts.minute;
-    if (parts.hour === 12) return 12 * 60 + parts.minute;
-    return parts.hour * 60 + parts.minute;
-  }
-
-  function parseTime(text) {
-    var parts = parseTimeParts(text);
-    if (!parts) return null;
-    return parts.meridiem ? withMeridiem(parts, parts.meridiem) : resolveBare(parts);
+    var h = parts.hour >= 1 && parts.hour <= 6 ? parts.hour + 12 : parts.hour;
+    return h * 60 + parts.minute;
   }
 
   // "1-4pm": the trailing meridiem governs both ends unless that inverts them.
@@ -187,8 +167,7 @@
   }
 
   function parseAvailability(text, warn) {
-    var avail = new Array(U.TOTAL_SLOTS);
-    for (var i = 0; i < U.TOTAL_SLOTS; i++) avail[i] = 0;
+    var avail = U.emptyAvailability();
     var raw = String(text || '').trim();
     if (!raw) return avail;
 
@@ -249,7 +228,7 @@
     var classes = U.SUBJECTS.slice();
     var rows = [columnsFor(classes)];
     tutors.forEach(function (t) {
-      rows.push([t.firstName, t.lastName]
+      rows.push([t.firstName, t.lastName, t.email || '']
         .concat(classes.map(function (c) { return t.subjects[c.key] ? 'Yes' : 'No'; }))
         .concat([
           t.maxHoursPerWeek,
@@ -327,6 +306,7 @@
       tutors.push({
         firstName: first,
         lastName: cell(row, 'last'),
+        email: cell(row, 'email'),
         subjects: subjects,
         // Left out when the cell is blank, so the schedule's default applies.
         maxHoursPerWeek: isFinite(maxWeek) ? maxWeek : undefined,
@@ -358,23 +338,18 @@
     }
     return encodeRows([
       columnsFor(classes),
-      ['Anna', 'Harden'].concat(answers(function (i) { return i >= classes.length - 2; }))
-        .concat([15, '', 0, 'Mon/Wed/Fri 12:00-17:00', '']),
-      ['Marcus', 'Bell'].concat(answers(function (i) { return i === 0; }))
-        .concat([15, '', 0, 'Mon-Thu 08:00-13:00', ''])
+      ['Anna', 'Harden', 'aharden@example.edu']
+        .concat(answers(function (i) { return i >= classes.length - 2; }))
+        .concat([15, 0, 'Mon/Wed/Fri 12:00-17:00', '']),
+      ['Marcus', 'Bell', 'mbell@example.edu']
+        .concat(answers(function (i) { return i === 0; }))
+        .concat([15, 0, 'Mon-Thu 08:00-13:00', ''])
     ]);
   }
 
   TS.csv = {
-    columnsFor: columnsFor,
-    TAIL_COLUMNS: TAIL_COLUMNS,
-    encodeRows: encodeRows,
     parseRows: parseRows,
-    formatAvailability: formatAvailability,
     parseAvailability: parseAvailability,
-    parseDayList: parseDayList,
-    parseTime: parseTime,
-    parseTimeRange: parseTimeRange,
     exportTutors: exportTutors,
     importTutors: importTutors,
     templateCsv: templateCsv

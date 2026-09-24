@@ -54,20 +54,6 @@
     return placement;
   }
 
-  /* How many tutors are at the tutoring center at each half hour. Embedded
-   * classes and open labs are somewhere else on campus, so they are not in
-   * this count: a floating tutor across the hall does not use up a seat at the
-   * center, and a second tutor can still be scheduled there.
-   */
-  function occupancy(assignments) {
-    var counts = new Array(U.TOTAL_SLOTS);
-    for (var i = 0; i < U.TOTAL_SLOTS; i++) counts[i] = 0;
-    U.mainShifts(assignments).forEach(function (a) {
-      for (var s = a.startSlot; s < a.endSlot; s++) counts[U.idx(a.day, s)]++;
-    });
-    return counts;
-  }
-
   /* ---- placement rules --------------------------------------------------- */
 
   function checkPlacement(state, assignment, day, start, end) {
@@ -677,7 +663,6 @@
     renderAside: renderAside,
     attach: attach,
     layoutDay: layoutDay,
-    occupancy: occupancy,
     checkPlacement: checkPlacement,
     commitMove: commitMove
   };

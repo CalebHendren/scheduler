@@ -75,7 +75,6 @@
     init: init,
     apply: apply,
     onChange: onChange,
-    isDark: isDark,
-    get mode() { return current; }
+    isDark: isDark
   };
 })(typeof window !== 'undefined' ? window : globalThis);

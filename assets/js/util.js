@@ -7,7 +7,7 @@
    * commit and attaches the single-file build. Semantic versioning -- a new
    * feature is a minor bump, a fix is a patch.
    */
-  var VERSION = '1.2.1';
+  var VERSION = '1.3.0';
 
   var DAY_START_MIN = 7 * 60;      // 7:00 AM
   var SLOT_MINUTES = 30;
@@ -315,7 +315,29 @@
 
   function idx(day, slot) { return day * SLOTS_PER_DAY + slot; }
   function slotStartMinutes(slot) { return DAY_START_MIN + slot * SLOT_MINUTES; }
-  function slotEndMinutes(slot) { return DAY_START_MIN + (slot + 1) * SLOT_MINUTES; }
+
+  /* ---- availability ----
+   * One flag per half hour of the week. Every place that reads a tutor's
+   * availability as stretches of time -- the painter's window rows, the CSV
+   * column -- reads it through availabilityRuns, so the two cannot disagree.
+   */
+  function emptyAvailability() {
+    var a = new Array(TOTAL_SLOTS);
+    for (var i = 0; i < TOTAL_SLOTS; i++) a[i] = 0;
+    return a;
+  }
+
+  // [[start, end], ...] for each unbroken stretch of one day, end exclusive.
+  function availabilityRuns(avail, day) {
+    var runs = [];
+    var start = null;
+    for (var s = 0; s <= SLOTS_PER_DAY; s++) {
+      var on = s < SLOTS_PER_DAY && avail[idx(day, s)];
+      if (on && start === null) start = s;
+      else if (!on && start !== null) { runs.push([start, s]); start = null; }
+    }
+    return runs;
+  }
 
   function formatMinutes(mins, opts) {
     opts = opts || {};
@@ -1052,7 +1074,6 @@
     DAY_NAMES: DAY_NAMES,
     DAY_ABBR: DAY_ABBR,
     SUBJECTS: SUBJECTS,
-    DEFAULT_SUBJECTS: DEFAULT_SUBJECTS,
     MAX_SUBJECTS: MAX_SUBJECTS,
     defaultSubjects: defaultSubjects,
     subjectKey: subjectKey,
@@ -1080,13 +1101,10 @@
     mergeCrampedSegments: mergeCrampedSegments,
     laneLabel: laneLabel,
     PALETTE: PALETTE,
-    SURFACE_LIGHT: SURFACE_LIGHT,
-    SURFACE_DARK: SURFACE_DARK,
-    INK_LIGHT: INK_LIGHT,
-    INK_DARK: INK_DARK,
     idx: idx,
     slotStartMinutes: slotStartMinutes,
-    slotEndMinutes: slotEndMinutes,
+    emptyAvailability: emptyAvailability,
+    availabilityRuns: availabilityRuns,
     formatMinutes: formatMinutes,
     formatRange: formatRange,
     formatRangeCompact: formatRangeCompact,
@@ -1100,9 +1118,6 @@
     listSentence: listSentence,
     displayNames: displayNames,
     hexToRgb: hexToRgb,
-    rgbToHex: rgbToHex,
-    mix: mix,
-    relativeLuminance: relativeLuminance,
     contrastRatio: contrastRatio,
     blockColors: blockColors,
     laneColors: laneColors,

@@ -10,6 +10,16 @@
    * table needs a fixed number of columns per day and a rowspan per block,
    * which is exactly what makes the exported PDF tagged and navigable.
    */
+  function emptyGrid(lanes) {
+    var grid = [];
+    for (var l = 0; l < lanes; l++) {
+      var row = new Array(U.SLOTS_PER_DAY);
+      for (var s = 0; s < U.SLOTS_PER_DAY; s++) row[s] = null;
+      grid.push(row);
+    }
+    return grid;
+  }
+
   function laneGrid(assignments, day) {
     var dayBlocks = U.mainShifts(assignments).filter(function (a) { return a.day === day; });
     var placement = TS.calendar.layoutDay(dayBlocks);
@@ -19,12 +29,7 @@
       if (p) lanes = Math.max(lanes, p.lane + 1);
     });
 
-    var grid = [];
-    for (var l = 0; l < lanes; l++) {
-      var row = new Array(U.SLOTS_PER_DAY);
-      for (var s = 0; s < U.SLOTS_PER_DAY; s++) row[s] = null;
-      grid.push(row);
-    }
+    var grid = emptyGrid(lanes);
     dayBlocks.forEach(function (b) {
       var lane = placement[b.id] ? placement[b.id].lane : 0;
       for (var s = b.startSlot; s < b.endSlot; s++) grid[lane][s] = b;
@@ -43,9 +48,9 @@
     return cls;
   }
 
-  function blockCell(a, labels, dark, cls) {
+  function blockCell(a, labels, cls) {
     var tutor = TS.store.getTutor(a.tutorId);
-    var colors = U.blockColors(tutor.colorIndex, dark);
+    var colors = U.blockColors(tutor.colorIndex, false); // print is always light
     var mask = U.subjectMask(tutor.subjects);
     var shorts = U.maskToShort(mask);
     var full = (tutor.firstName + ' ' + tutor.lastName).trim();
@@ -59,17 +64,14 @@
       '</td>';
   }
 
-  function buildTable(state, labels) {
-    var dark = false; // print is always light
-    // The grid is the tutoring center. Embedded classes and open labs are held
-    // elsewhere, so they go in the band underneath instead.
-    var drawn = U.mainShifts(state.assignments);
-    var win = U.scheduleWindow(drawn);
-    var days = [];
-    for (var d = 0; d < U.DAYS; d++) days.push(laneGrid(drawn, d));
-
+  /* Both calendars are the same table: a time column, then each day as many
+   * lanes wide as it needs. Only what stands in a lane differs, so the caller
+   * hands over the lanes and says how to draw the cell a block starts in; the
+   * rows it spans below are absorbed by that cell's rowspan.
+   */
+  function gridTable(what, win, days, cellFor) {
     var html = '<table class="pv-table"><caption class="visually-hidden">' +
-      'Weekly tutoring schedule, Monday through Friday, ' +
+      what + ', Monday through Friday, ' +
       esc(U.formatMinutes(U.slotStartMinutes(win.start))) + ' to ' +
       esc(U.formatMinutes(U.slotStartMinutes(win.end))) + '</caption><thead><tr>' +
       '<th scope="col" class="pv-time-head pv-dayend">Time</th>';
@@ -87,17 +89,14 @@
         '<th scope="row" class="pv-time">' +
         (onHour ? esc(U.formatMinutes(U.slotStartMinutes(s))) : '') + '</th>';
 
-      for (var dd = 0; dd < U.DAYS; dd++) {
-        for (var l = 0; l < days[dd].lanes; l++) {
-          var a = days[dd].grid[l][s];
-          if (!a) {
-            html += '<td class="' + cellClass('pv-empty', dd, l, days[dd].lanes) + '"></td>';
-            continue;
+      for (var d = 0; d < U.DAYS; d++) {
+        for (var l = 0; l < days[d].lanes; l++) {
+          var item = days[d].grid[l] ? days[d].grid[l][s] : null;
+          if (!item) {
+            html += '<td class="' + cellClass('pv-empty', d, l, days[d].lanes) + '"></td>';
+          } else if (item.startSlot === s) {
+            html += cellFor(item, cellClass('pv-block', d, l, days[d].lanes), days[d].lanes);
           }
-          if (a.startSlot === s) {
-            html += blockCell(a, labels, dark, cellClass('pv-block', dd, l, days[dd].lanes));
-          }
-          // slots after the first are absorbed by the rowspan above
         }
       }
       html += '</tr>';
@@ -106,11 +105,16 @@
     return html + '</tbody></table>';
   }
 
-  /* The footnote the old handouts carried: one line per kind under the grid,
-   * headed by the name of the kind. Entries that repeat across days are
-   * collapsed, so a floating tutor with the same Tuesday and Thursday window
-   * reads as one entry.
-   */
+  function buildTable(state, labels) {
+    // The grid is the tutoring center. Embedded classes and open labs are held
+    // elsewhere, so they go in the band underneath instead.
+    var drawn = U.mainShifts(state.assignments);
+    var days = [];
+    for (var d = 0; d < U.DAYS; d++) days.push(laneGrid(drawn, d));
+    return gridTable('Weekly tutoring schedule', U.scheduleWindow(drawn), days,
+      function (a, cls) { return blockCell(a, labels, cls); });
+  }
+
   /* The same grid read the other way round: one lane per class rather than per
    * tutor, so a student can find their class and see when it is covered. A day
    * only carries lanes for the classes actually on offer that day -- laying out
@@ -124,11 +128,7 @@
     });
     lanes.sort(function (a, b) { return a - b; });
 
-    var grid = lanes.map(function () {
-      var row = new Array(U.SLOTS_PER_DAY);
-      for (var s = 0; s < U.SLOTS_PER_DAY; s++) row[s] = null;
-      return row;
-    });
+    var grid = emptyGrid(lanes.length);
     today.forEach(function (run) {
       var lane = lanes.indexOf(run.lane);
       for (var s = run.startSlot; s < run.endSlot; s++) grid[lane][s] = run;
@@ -144,11 +144,6 @@
     }));
   }
 
-  /* The class code heads the block and the block runs as long as the class is
-   * covered. Where the tutors change partway down, a faint rule marks the
-   * change at the height it happens, and each stretch under it carries its
-   * own names and hours.
-   */
   /* The printed page is a fixed size, so what fits in a stretch can be worked
    * out before it is drawn: a table cell cannot tell its contents to give way
    * line by line. These are the print.css figures the budget rests on.
@@ -191,7 +186,10 @@
     return px <= width - 1;
   }
 
-  /* Each stretch is boxed to exactly its own hours, names over time. The page
+  /* The class code heads the block and the block runs as long as the class is
+   * covered. Where the tutors change partway down, a faint rule marks the
+   * change at the height it happens, and each stretch under it is boxed to
+   * exactly its own hours, names over time. The page
    * is about the class, so the class code and the time are given their lines
    * first -- the range whole, broken after the dash, or shortened to one line
    * ("9-12") when that is all there is -- and the names get whole lines from
@@ -264,51 +262,12 @@
       '</td>';
   }
 
-  function buildSubjectTable(state, labels) {
-    var runs = U.coverageRuns(state.assignments, state.tutors);
+  function buildSubjectTable(state, labels, runs) {
     if (!runs.length) return '<p>No class is covered yet.</p>';
-
-    var win = U.scheduleWindow(U.mainShifts(state.assignments));
     var days = [];
     for (var d = 0; d < U.DAYS; d++) days.push(subjectLaneGrid(runs, d));
-
-    var html = '<table class="pv-table"><caption class="visually-hidden">' +
-      'Weekly class coverage, Monday through Friday, ' +
-      esc(U.formatMinutes(U.slotStartMinutes(win.start))) + ' to ' +
-      esc(U.formatMinutes(U.slotStartMinutes(win.end))) + '</caption><thead><tr>' +
-      '<th scope="col" class="pv-time-head pv-dayend">Time</th>';
-    for (var i = 0; i < U.DAYS; i++) {
-      html += '<th scope="' + (days[i].lanes > 1 ? 'colgroup' : 'col') + '"' +
-        ' class="pv-dayend"' +
-        (days[i].lanes > 1 ? ' colspan="' + days[i].lanes + '"' : '') + '>' +
-        U.DAY_NAMES[i] + '</th>';
-    }
-    html += '</tr></thead><tbody>';
-
-    for (var s = win.start; s < win.end; s++) {
-      var onHour = U.slotStartMinutes(s) % 60 === 0;
-      html += '<tr' + (onHour ? ' class="pv-hour"' : '') + '>' +
-        '<th scope="row" class="pv-time">' +
-        (onHour ? esc(U.formatMinutes(U.slotStartMinutes(s))) : '') + '</th>';
-
-      for (var dd = 0; dd < U.DAYS; dd++) {
-        for (var l = 0; l < days[dd].lanes; l++) {
-          var run = days[dd].grid[l] ? days[dd].grid[l][s] : null;
-          if (!run) {
-            html += '<td class="' + cellClass('pv-empty', dd, l, days[dd].lanes) + '"></td>';
-            continue;
-          }
-          if (run.startSlot === s) {
-            html += subjectCell(run, labels, cellClass('pv-block', dd, l, days[dd].lanes),
-              days[dd].lanes);
-          }
-          // slots after the first are absorbed by the rowspan above
-        }
-      }
-      html += '</tr>';
-    }
-
-    return html + '</tbody></table>';
+    return gridTable('Weekly class coverage', U.scheduleWindow(U.mainShifts(state.assignments)),
+      days, function (run, cls, lanes) { return subjectCell(run, labels, cls, lanes); });
   }
 
   function buildSubjectLegend(runs) {
@@ -427,13 +386,14 @@
 
   function buildFoot(state, legendHtml) {
     var s = state.settings;
-    var qrSvg = TS.qr.toSvg(s.qrUrl, { label: 'QR code linking to ' + s.qrUrl });
+    // The link itself is left off the page: it is long and carries an id
+    // nobody would type, so the code is what gets used.
+    var qrSvg = TS.qr.toSvg(s.qrUrl, { label: 'QR code: ' + (s.qrHeading || s.qrUrl) });
     return '<div class="pv-foot">' +
       '<div class="pv-qr">' + qrSvg + '</div>' +
       '<div class="pv-qr__text">' +
-        '<p><strong>Need help outside these hours?</strong></p>' +
-        '<p>' + esc(s.qrCaption) + '</p>' +
-        '<p class="pv-qr__url">' + esc(s.qrUrl) + '</p>' +
+        (s.qrHeading ? '<p><strong>' + esc(s.qrHeading) + '</strong></p>' : '') +
+        (s.qrCaption ? '<p>' + esc(s.qrCaption) + '</p>' : '') +
       '</div>' +
       legendHtml +
       '</div>';
@@ -452,25 +412,19 @@
   function render(container, state) {
     var labels = U.displayNames(state.tutors);
     var runs = U.coverageRuns(state.assignments, state.tutors);
+    var listing = state.settings.includeListing ? buildListing(state, labels) : '';
 
+    // Printed double sided, the two calendars are the two faces of one sheet.
+    // With the listing on, it follows each calendar instead, so each sheet
+    // carries a calendar on one face and the listing on the other.
     container.innerHTML =
       buildHandout(state, labels, buildTable(state, labels), buildLegend(state, labels)) +
-      buildListing(state, labels) +
-      // The coverage page, and the listing again behind it: printed double
-      // sided, each sheet then carries a calendar on one face and the shift
-      // listing on the other, whichever sheet someone picks up.
+      listing +
       '<section class="pv-coverage">' +
-        buildHandout(state, labels, buildSubjectTable(state, labels), buildSubjectLegend(runs)) +
+        buildHandout(state, labels, buildSubjectTable(state, labels, runs), buildSubjectLegend(runs)) +
       '</section>' +
-      buildListing(state, labels);
+      listing;
   }
 
-  TS.printview = {
-    render: render,
-    laneGrid: laneGrid,
-    subjectLaneGrid: subjectLaneGrid,
-    buildListing: buildListing,
-    buildSubjectTable: buildSubjectTable,
-    buildOffRoom: buildOffRoom
-  };
+  TS.printview = { render: render };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -369,14 +369,6 @@
     return merged;
   }
 
-  function cloneSolution(sol) {
-    var copy = createSolution(sol.ctx);
-    sol.blocks.forEach(function (b) {
-      applyAdd(copy, makeBlock(b.tutorIndex, b.day, b.start, b.end, b.locked, b.id, b.offRoom));
-    });
-    return copy;
-  }
-
   /* ---- phase 1: greedy construction ------------------------------------ */
 
   // onlyIndex, when given, restricts the fill to a single tutor; everything
@@ -1019,13 +1011,7 @@
   };
 
   TS.optimizer = {
-    WEIGHTS: {
-      cover1: W_COVER1, cover2: W_COVER2, coverN: W_COVERN,
-      subject: W_SUBJECT, dup: W_DUP, slot: W_SLOT, block: W_BLOCK, equity: W_EQUITY,
-      returnTrip: W_RETURN, idle: W_IDLE
-    },
     GAP_REASONS: GAP_REASONS,
-    buildContext: buildContext,
     createSolver: createSolver,
     optimize: optimize,
     fitTutor: fitTutor,
@@ -1033,8 +1019,6 @@
     stats: stats,
     analyzeGaps: analyzeGaps,
     returnTrips: returnTrips,
-    slotScore: slotScore,
-    mergeAdjacent: mergeAdjacent,
     mulberry32: mulberry32
   };
 })(typeof window !== 'undefined' ? window : globalThis);
