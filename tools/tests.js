@@ -1020,6 +1020,145 @@
     r.eq(U.daysLabel([0, 2, 4]), 'Mon, Wed & Fri', 'three days read as a list');
   }
 
+  function testPeriods(r) {
+    TS.store.reset();
+    TS.store.loadSample();
+    TS.store.setPrintPeriods(null);
+    var st = function () { return TS.store.state; };
+    var who = st().tutors[0].id;
+    TS.store.addAssignment({ tutorId: who, day: 0, startSlot: 12, endSlot: 16 });
+    st().periods[0].start = '2026-08-24';
+    st().periods[0].end = '2026-10-09';
+    TS.store.commit('add-shift');
+
+    r.eq(st().activePeriod, 0, 'the schedule opens on the 1st 7 weeks');
+    r.eq(st().periods[1].assignments, null, 'with the 2nd not started yet');
+
+    // Printing, while the 1st is under way, is both halves in one document.
+    var sept = new Date(2026, 8, 24), nov = new Date(2026, 10, 2);
+    r.eq(TS.store.printPeriods(sept), 'both', 'both 7 weeks print while the 1st is under way');
+    var views = TS.store.printViews(sept);
+    r.eq(views.map(function (v) { return v.periods[v.activePeriod].label; }).join(' / '),
+      '1st 7 weeks / 2nd 7 weeks', 'the 1st, then the 2nd');
+    r.eq(views[0].assignments.length, 1, 'the half on screen prints as it stands, unsaved shift and all');
+    r.eq(views[1].assignments.length, 1, 'a 2nd never opened prints as the copy it would open as');
+    r.eq(st().periods[1].assignments, null, 'without printing starting it');
+    r.eq(views[0].settings.effective, 'Aug 24 – Oct 9, 2026', 'each half carries its own dates to the handout');
+    r.eq(TS.store.printName(sept), 'Life Science Tutor Schedule 8-24-2026',
+      'and the file is named for the 1st\'s start date');
+
+    TS.store.switchPeriod(1);
+    TS.store.commit('period');
+    r.eq(st().activePeriod, 1, 'switching opens the 2nd 7 weeks');
+    r.eq(st().assignments.length, 1, 'which starts as a copy of the 1st');
+    r.ok(st().assignments[0].id !== st().periods[0].assignments[0].id,
+      'with shifts of its own, not the 1st\'s');
+
+    // Changing the 2nd leaves the 1st alone.
+    TS.store.removeAssignment(st().assignments[0].id);
+    st().periods[1].start = '2026-10-12';
+    st().periods[1].end = '2026-12-10';
+    TS.store.commit('remove');
+    TS.store.switchPeriod(0);
+    TS.store.commit('period');
+    r.eq(st().assignments.length, 1, 'the 1st keeps its shift when the 2nd drops it');
+    TS.store.switchPeriod(1);
+    TS.store.commit('period');
+    r.eq(st().assignments.length, 0, 'while the 2nd stays as it was left');
+
+    // Once the 1st is over, only the 2nd prints -- unless someone picks otherwise.
+    r.eq(TS.store.periodInEffect(sept) + '/' + TS.store.periodInEffect(nov), '0/1',
+      'the half in effect follows the 1st\'s end date');
+    r.eq(TS.store.printPeriods(nov), '1', 'after the 1st ends, only the 2nd prints');
+    views = TS.store.printViews(nov);
+    r.eq(views.length + ':' + views[0].activePeriod, '1:1', 'one half, the 2nd');
+    r.eq(TS.store.printName(nov), 'Life Science Tutor Schedule 10-12-2026', 'named for its own start');
+    TS.store.setPrintPeriods('0');
+    views = TS.store.printViews(nov);
+    r.eq(views.length + ':' + views[0].activePeriod + ':' + views[0].assignments.length, '1:0:1',
+      '"1st 7 weeks only" prints the 1st alone, even from the 2nd');
+    TS.store.setPrintPeriods('both');
+    r.eq(TS.store.printViews(nov).length, 2, '"Both" prints both even after the 1st is over');
+    TS.store.setPrintPeriods(null);
+
+    // Opening the app: the half in effect, wherever it was left.
+    TS.store.switchPeriod(0);
+    TS.store.commit('period');
+    r.ok(TS.store.openPeriodInEffect(nov), 'opened after the 1st has ended, it moves to the 2nd');
+    r.eq(st().activePeriod, 1, 'and shows it');
+    r.ok(!TS.store.canUndo(), 'which is where the session starts, not a change to undo');
+    r.ok(TS.store.openPeriodInEffect(sept) && st().activePeriod === 0,
+      'opened while the 1st is under way, it shows the 1st');
+    st().periods[0].end = '';
+    r.eq(TS.store.periodInEffect(nov), null, 'with no end date, there is nothing to go by');
+    r.ok(!TS.store.openPeriodInEffect(nov), 'and it stays where it was left');
+    st().periods[0].end = '2026-10-09';
+    TS.store.commit('dates');
+
+    // Copy the 1st again, and undo it.
+    TS.store.switchPeriod(1);
+    TS.store.commit('period');
+    TS.store.copyOtherPeriod();
+    TS.store.commit('copy-period');
+    r.eq(st().assignments.length, 1, 'copying the 1st starts the 2nd over from it');
+    r.eq(TS.store.undo(), 'copy-period', 'which is undoable');
+    r.eq(st().assignments.length, 0, 'back to the 2nd as it was');
+    r.eq(TS.store.undo(), 'period', 'and undo steps back over a switch too');
+    r.eq(st().activePeriod, 0, 'landing on the 1st again');
+
+    // Both halves survive a file round trip, and which one was open.
+    TS.store.switchPeriod(1);
+    TS.store.commit('period');
+    var back = TS.store.migrate(JSON.parse(TS.store.toJson()));
+    r.eq(back.activePeriod, 1, 'an export remembers which 7 weeks was open');
+    r.eq(back.periods[0].assignments.length + '/' + back.assignments.length, '1/0',
+      'and carries both halves\' shifts');
+    r.eq(back.periods.map(function (p) { return p.start + '..' + p.end; }).join(' '),
+      '2026-08-24..2026-10-09 2026-10-12..2026-12-10', 'and both halves\' dates');
+
+    // Removing a tutor takes their shifts out of both halves.
+    TS.store.copyOtherPeriod();
+    TS.store.commit('copy-period');
+    TS.store.removeTutor(who);
+    TS.store.commit('remove-tutor');
+    r.eq(st().assignments.length + st().periods[0].assignments.length, 0,
+      'removing a tutor clears their shifts from both 7 weeks');
+
+    // A file from before the two halves is the 1st, and its free-text dates
+    // keep their start.
+    var single = TS.store.migrate({
+      settings: { effective: 'Aug 24 – Dec 10', term: 'Fall 2026' },
+      tutors: [{ id: 't', firstName: 'T', availability: [] }],
+      assignments: [{ id: 'a', tutorId: 't', day: 0, startSlot: 4, endSlot: 8 }]
+    });
+    r.eq(single.activePeriod + ':' + single.assignments.length + ':' +
+      (single.periods[1].assignments === null), '0:1:true',
+      'a file with one week loads as the 1st 7 weeks, with the 2nd not started');
+    r.eq(single.periods[0].start, '2026-08-24', 'its free-text dates become a start date');
+    r.ok(!('effective' in single.settings), 'and no free text is left behind');
+    var bad = TS.store.migrate({ periods: [{ start: 'soon', end: '2026-13-01', assignments: [] }], tutors: [] });
+    r.eq(bad.periods[0].start + '|' + bad.periods[0].end, '|', 'dates that are not dates are dropped');
+
+    // A class or a lab rides into the 2nd 7 weeks with its kind and its room.
+    TS.store.reset();
+    TS.store.loadSample();
+    var embedded = TS.store.addAssignment({ tutorId: st().tutors[0].id, day: 1, startSlot: 8, endSlot: 12,
+      kind: 'embedded', room: 'OMN 286' });
+    TS.store.commit('add-shift');
+    TS.store.switchPeriod(1);
+    TS.store.commit('period');
+    var copied = st().assignments.filter(function (a) { return a.kind === 'embedded'; });
+    r.eq(copied.length + ':' + (copied[0] && copied[0].room), '1:OMN 286',
+      'an embedded class copies into the 2nd 7 weeks with its room');
+    r.ok(copied[0] && copied[0].id !== embedded.id, 'as a shift of its own');
+    r.eq(TS.store.printViews(new Date(2026, 8, 24))[1].assignments.filter(function (a) {
+      return a.kind === 'embedded';
+    }).length, 1, 'and is on the 2nd half\'s handout');
+
+    TS.store.reset();
+    TS.store.clearHistory();
+  }
+
   /* ---- 7. joining shifts that touch -------------------------------------- */
 
   function testMergeTouching(r) {
@@ -1209,27 +1348,36 @@
 
   function testHandoutName(r) {
     var today = new Date(2026, 8, 24);
-    var name = function (effective, term) {
-      return U.handoutName({ title: 'Life Science Tutor Schedule', effective: effective, term: term }, today);
+    var name = function (start) {
+      return U.handoutName({ title: 'Life Science Tutor Schedule', startDate: start }, today);
     };
-    r.eq(name('Aug 24 – Dec 11', 'Fall 2026'), 'Life Science Tutor Schedule 8-24-2026',
-      'the file is named for the day the schedule takes effect');
-    r.eq(name('August 24, 2026 - December 11, 2026', ''), 'Life Science Tutor Schedule 8-24-2026',
-      'written out in full, the start date is still found');
-    r.eq(name('8/24 - 12/11', 'Spring 2027'), 'Life Science Tutor Schedule 8-24-2027',
-      'a start with no year takes the semester\'s');
-    r.eq(name('2026-08-24 to 2026-12-11', ''), 'Life Science Tutor Schedule 8-24-2026',
-      'an ISO date reads too');
-    r.eq(name('Dec 1 – Jan 15, 2027', ''), 'Life Science Tutor Schedule 12-1-2026',
-      'dates that run over New Year start in the year before the one written');
-    r.eq(name('Starts 8/24/26', ''), 'Life Science Tutor Schedule 8-24-2026', 'a two-digit year reads');
-    r.eq(name('', 'Fall 2026'), 'Life Science Tutor Schedule 9-24-2026',
-      'with no effective date, the file is named for today');
-    r.eq(name('Feb 30 – Mar 3', ''), 'Life Science Tutor Schedule 9-24-2026',
-      'and so it is when the start is not a real date');
-    r.eq(U.handoutName({ title: 'Bio/Micro: Fall', effective: 'Aug 24' }, today),
-      'Bio Micro Fall 8-24-2026',
-      'characters a file name cannot hold are dropped from the title');
+    r.eq(name('2026-08-24'), 'Life Science Tutor Schedule 8-24-2026',
+      'the file is named for the day the printed half starts');
+    r.eq(name(''), 'Life Science Tutor Schedule 9-24-2026', 'with no start date, it is named for today');
+    r.eq(name('2026-02-30'), 'Life Science Tutor Schedule 9-24-2026', 'and so it is when the start is no date');
+    r.eq(U.handoutName({ title: 'Bio/Micro: Fall', startDate: '2026-08-24' }, today),
+      'Bio Micro Fall 8-24-2026', 'characters a file name cannot hold are dropped from the title');
+
+    // How the handout writes a half's dates.
+    r.eq(U.dateRangeLabel('2026-08-24', '2026-10-09'), 'Aug 24 – Oct 9, 2026', 'the year once when both ends share it');
+    r.eq(U.dateRangeLabel('2026-12-01', '2027-01-15'), 'Dec 1, 2026 – Jan 15, 2027', 'both years when not');
+    r.eq(U.dateRangeLabel('2026-08-24', ''), 'From Aug 24, 2026', 'a start alone');
+    r.eq(U.dateRangeLabel('', '2026-10-09'), 'Through Oct 9, 2026', 'an end alone');
+    r.eq(U.dateRangeLabel('', ''), '', 'and nothing when neither is set');
+
+    // "Over" is the day after the end date, not the end date itself.
+    r.ok(!U.isPast('2026-10-09', new Date(2026, 9, 9, 17, 0)), 'the last day of a half is still in it');
+    r.ok(U.isPast('2026-10-09', new Date(2026, 9, 10, 8, 0)), 'the day after, it is over');
+
+    // Effective dates used to be free text; a file from then keeps its start.
+    var read = function (text, term) { return U.isoDate(U.effectiveStart(text, term)); };
+    r.eq(read('Aug 24 – Dec 11', 'Fall 2026'), '2026-08-24', 'free text: the first date, with the semester\'s year');
+    r.eq(read('August 24, 2026 - December 11, 2026', ''), '2026-08-24', 'written out in full');
+    r.eq(read('8/24 - 12/11', 'Spring 2027'), '2027-08-24', 'numbers');
+    r.eq(read('2026-08-24 to 2026-12-11', ''), '2026-08-24', 'an ISO date');
+    r.eq(read('Dec 1 – Jan 15, 2027', ''), '2026-12-01', 'running over New Year');
+    r.eq(read('Starts 8/24/26', ''), '2026-08-24', 'a two-digit year');
+    r.eq(read('Feb 30 – Mar 3', ''), '', 'and nothing from a date that is not one');
   }
 
   function testDefaults(r) {
@@ -1258,6 +1406,10 @@
     r.eq(s.qrUrl, slate, 'the QR code links to the appointment page, id and all');
     r.eq(s.includeListing, false, 'the text listing is off by default');
     r.eq(s.location, 'Academic Success Center (IMC 270)', 'the center has its new name');
+    r.eq(s.orientation, 'landscape', 'the handout is landscape by default');
+    r.eq(TS.store.migrate({ settings: { orientation: 'portrait' }, tutors: [] }).settings.orientation,
+      'portrait', 'and a schedule saved in portrait stays portrait');
+    r.ok(!('effective' in s), 'the dates are the 7 weeks\' own, not a setting');
 
     var older = TS.store.migrate({
       settings: { qrUrl: 'https://www.tutor.com', qrCaption: 'Free 24/7 online tutoring',
@@ -1426,6 +1578,7 @@
     testCsv(r);
     testSubjectClasses(r);
     testShiftKinds(r);
+    testPeriods(r);
     testMergeTouching(r);
     testDefaults(r);
     testHandoutName(r);

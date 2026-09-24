@@ -12,7 +12,6 @@
     return {
       title: 'Life Science Tutor Schedule',
       term: 'Fall 2026',
-      effective: '',
       notes: 'No tutoring will be available September 7, October 5–11, or November 23–29, ' +
         'or any time the IMC and/or campus is closed. The last day of tutoring for the fall ' +
         'semester is December 10, 2026.',
@@ -26,6 +25,8 @@
       // The plain-text listing is optional, so the two calendars can be
       // printed on the two faces of one sheet.
       includeListing: false,
+      // The handout's page: Life Science posts landscape sheets.
+      orientation: 'landscape',
       minShiftSlots: 2,
       // Up to three at the center through the day, two once the evening starts
       // -- see U.capRules for how a shift already running carries past it.
@@ -43,8 +44,138 @@
     };
   }
 
+  /* ---- the two 7-week halves ----
+   * The term runs as two 7-week halves, and a half can have a week of its own
+   * -- a tutor whose classes change at the midpoint, say. Each half keeps its
+   * own shifts and its own start and end dates (ISO, as a date field gives
+   * them); the roster and every other setting are shared.
+   *
+   * The shifts of the half being worked on live where a single week's always
+   * have: state.assignments. The rest of the app never needs to know there is
+   * another one. The other half's wait in state.periods, and switching swaps
+   * the two over. A half whose assignments are null has not been started, and
+   * opens as a copy of the other.
+   */
+  var PERIOD_LABELS = ['1st 7 weeks', '2nd 7 weeks'];
+
+  function emptyPeriods() {
+    return PERIOD_LABELS.map(function (label, i) {
+      return { label: label, start: '', end: '', assignments: i === 0 ? [] : null };
+    });
+  }
+
   function emptyState() {
-    return { version: VERSION, settings: defaultSettings(), tutors: [], assignments: [] };
+    return {
+      version: VERSION, settings: defaultSettings(), tutors: [], assignments: [],
+      periods: emptyPeriods(), activePeriod: 0
+    };
+  }
+
+  // Writes the half being worked on back into its place in state.periods, so
+  // anything read from there -- a save, an export, undo -- is current.
+  function syncPeriod() {
+    state.periods[state.activePeriod].assignments = state.assignments;
+  }
+
+  // A copy keeps everything about a shift -- an embedded class keeps its kind
+  // and its room -- except its id.
+  function copyShifts(list) {
+    return (list || []).map(function (a) {
+      var copy = normalizeAssignment(a);
+      copy.id = U.uid('shift');
+      return copy;
+    });
+  }
+
+  function activePeriodLabel() {
+    return state.periods[state.activePeriod].label;
+  }
+
+  function switchPeriod(index) {
+    if (index === state.activePeriod || !state.periods[index]) return false;
+    syncPeriod();
+    var next = state.periods[index];
+    if (!next.assignments) next.assignments = copyShifts(state.assignments);
+    // A tutor removed while the other half was on screen leaves nothing behind.
+    next.assignments = next.assignments.filter(function (a) { return getTutor(a.tutorId); });
+    state.assignments = next.assignments;
+    state.activePeriod = index;
+    return true;
+  }
+
+  /* The half in effect on `today`: the 2nd once the day after the 1st's end
+   * date has come, the 1st before it, and null while the 1st has no end date
+   * to go by. */
+  function periodInEffect(today) {
+    var end = state.periods[0].end;
+    if (!U.parseIso(end)) return null;
+    return U.isPast(end, today) ? 1 : 0;
+  }
+
+  /* What the app opens on: the half in effect, whichever was on screen when it
+   * was last closed. Returns whether it moved. Not an undoable change -- it is
+   * where the session starts, not something anyone did. */
+  function openPeriodInEffect(today) {
+    var i = periodInEffect(today);
+    if (i === null || !switchPeriod(i)) return false;
+    clearHistory();
+    save();
+    return true;
+  }
+
+  /* Which halves Print and Download PDF produce: 'both' in one document, or
+   * '0' / '1' for one alone. Unless someone picks otherwise, that is both
+   * until the 1st 7 weeks is over and only the 2nd after -- a sheet for weeks
+   * already gone is not one to post. A pick lasts until the page is closed,
+   * so the next visit starts from the dates again. */
+  var printChoice = null;
+
+  function printPeriods(today) {
+    if (printChoice !== null) return printChoice;
+    return periodInEffect(today) === 1 ? '1' : 'both';
+  }
+
+  function setPrintPeriods(choice) {
+    printChoice = choice === '0' || choice === '1' || choice === 'both' ? choice : null;
+  }
+
+  /* What Print and Download PDF produce: one state-shaped view per half, in
+   * order, each carrying that half's shifts and dates and naming itself as the
+   * active half, so the handout code reads it exactly as it would the half on
+   * screen. A 2nd 7 weeks never opened prints as what it would open as -- a
+   * copy of the 1st -- without anything being written back.
+   */
+  function printViews(today) {
+    syncPeriod();
+    var choice = printPeriods(today);
+    var which = choice === '0' ? [0] : choice === '1' ? [1] : [0, 1];
+    return which.map(function (i) {
+      var settings = {};
+      Object.keys(state.settings).forEach(function (k) { settings[k] = state.settings[k]; });
+      var p = state.periods[i];
+      settings.effective = U.dateRangeLabel(p.start, p.end);
+      settings.startDate = p.start;
+      return {
+        settings: settings,
+        tutors: state.tutors,
+        assignments: state.periods[i].assignments || state.periods[0].assignments || [],
+        periods: state.periods,
+        activePeriod: i
+      };
+    });
+  }
+
+  // The printed file's name, from the first half it carries.
+  function printName(today) {
+    return U.handoutName(printViews(today)[0].settings, today);
+  }
+
+  // Starts the half being worked on over as a copy of the other one.
+  function copyOtherPeriod() {
+    syncPeriod();
+    var other = state.periods[1 - state.activePeriod];
+    state.assignments = copyShifts(other.assignments || []);
+    syncPeriod();
   }
 
   var state = emptyState();
@@ -67,7 +198,11 @@
   var mark = null;   // set below, once serialize() is reachable
 
   function serialize() {
-    return JSON.stringify({ settings: state.settings, tutors: state.tutors, assignments: state.assignments });
+    syncPeriod();
+    return JSON.stringify({
+      settings: state.settings, tutors: state.tutors, assignments: state.assignments,
+      periods: state.periods, activePeriod: state.activePeriod
+    });
   }
 
   function restore(json) {
@@ -147,6 +282,7 @@
   function save() {
     if (!storageAvailable()) return false;
     try {
+      syncPeriod();
       root.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       return true;
     } catch (e) {
@@ -191,9 +327,37 @@
     next.tutors = (obj.tutors || []).map(normalizeTutor);
     var ids = {};
     next.tutors.forEach(function (t) { ids[t.id] = true; });
-    next.assignments = (obj.assignments || [])
-      .filter(function (a) { return a && ids[a.tutorId]; })
-      .map(normalizeAssignment);
+    var shifts = function (list) {
+      return (list || []).filter(function (a) { return a && ids[a.tutorId]; }).map(normalizeAssignment);
+    };
+
+    /* Dates are ISO. Effective dates used to be free text, and the first date
+     * written in them is kept as the start. */
+    var term = next.settings.term;
+    var dateFrom = function (iso, text) {
+      if (U.parseIso(iso)) return iso;
+      return text ? U.isoDate(U.effectiveStart(text, term)) : '';
+    };
+
+    // A file from before the halves is one week, and it becomes the 1st 7 weeks.
+    var saved = Array.isArray(obj.periods) ? obj.periods : null;
+    var oldText = obj.settings && typeof obj.settings.effective === 'string' ? obj.settings.effective : '';
+    next.periods.forEach(function (p, i) {
+      var from = saved ? saved[i] || {} : (i === 0 ? { assignments: obj.assignments, effective: oldText } : {});
+      p.start = dateFrom(from.start, from.effective);
+      p.end = U.parseIso(from.end) ? from.end : '';
+      p.assignments = Array.isArray(from.assignments) ? shifts(from.assignments)
+        : i === 0 ? [] : null;
+    });
+    next.activePeriod = saved && next.periods[obj.activePeriod] ? obj.activePeriod | 0 : 0;
+
+    // The half that was open is live in obj.assignments, which wins over the
+    // copy filed under periods: that copy is only as fresh as the last save.
+    var active = next.periods[next.activePeriod];
+    if (saved && Array.isArray(obj.assignments)) active.assignments = shifts(obj.assignments);
+    if (saved && oldText && !active.start) active.start = dateFrom('', oldText);
+    if (!active.assignments) active.assignments = [];
+    next.assignments = active.assignments;
     return next;
   }
 
@@ -305,7 +469,23 @@
 
   function removeTutor(id) {
     state.tutors = state.tutors.filter(function (t) { return t.id !== id; });
-    state.assignments = state.assignments.filter(function (a) { return a.tutorId !== id; });
+    filterShifts(function (a) { return a.tutorId !== id; });
+  }
+
+  /* Keeps only the shifts `keep` accepts, in both halves: a change to the
+   * roster is true of the whole term, not just the half on screen. Returns how
+   * many were dropped from each, [1st, 2nd].
+   */
+  function filterShifts(keep) {
+    syncPeriod();
+    var dropped = state.periods.map(function (p) {
+      if (!p.assignments) return 0;
+      var before = p.assignments.length;
+      p.assignments = p.assignments.filter(keep);
+      return before - p.assignments.length;
+    });
+    state.assignments = state.periods[state.activePeriod].assignments;
+    return dropped;
   }
 
   /* ---- assignments ---- */
@@ -367,7 +547,10 @@
 
   /* ---- import / export ---- */
 
-  function toJson() { return JSON.stringify(state, null, 2); }
+  function toJson() {
+    syncPeriod();
+    return JSON.stringify(state, null, 2);
+  }
 
   function fromJson(text) {
     var parsed = JSON.parse(text);
@@ -448,6 +631,17 @@
   TS.store = {
     APPOINTMENT_URL: APPOINTMENT_URL,
     get state() { return state; },
+    PERIOD_LABELS: PERIOD_LABELS,
+    activePeriodLabel: activePeriodLabel,
+    switchPeriod: switchPeriod,
+    copyOtherPeriod: copyOtherPeriod,
+    periodInEffect: periodInEffect,
+    openPeriodInEffect: openPeriodInEffect,
+    printPeriods: printPeriods,
+    setPrintPeriods: setPrintPeriods,
+    printViews: printViews,
+    printName: printName,
+    filterShifts: filterShifts,
     defaultSettings: defaultSettings,
     emptyState: emptyState,
     sampleTutors: sampleTutors,
