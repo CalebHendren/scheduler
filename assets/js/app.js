@@ -593,7 +593,9 @@
     { group: 'Handout' },
     { key: 'title', label: 'Schedule title', type: 'text' },
     { key: 'term', label: 'Semester', type: 'text', placeholder: 'Fall 2026' },
-    { key: 'effective', label: 'Effective dates', type: 'text', placeholder: 'Aug 24 – Dec 11' },
+    { key: 'effective', label: 'Effective dates', type: 'text', placeholder: 'Aug 24 – Dec 11',
+      hint: 'The first date goes in the saved PDF’s name, after the title: ' +
+        '“… Schedule 8-24-2026”. Left blank, today’s date is used.' },
     { key: 'notes', label: 'Important notes', type: 'textarea',
       placeholder: 'Closures, the last day of tutoring, anything else on the handout' },
     { key: 'location', label: 'Location (the main calendar)', type: 'text',
@@ -869,6 +871,18 @@
     });
 
     $('btn-print').addEventListener('click', function () { root.print(); });
+
+    // Save as PDF offers the page title as the file name, so while printing
+    // the title is the same name the downloaded PDF gets.
+    var screenTitle = null;
+    root.addEventListener('beforeprint', function () {
+      if (screenTitle === null) screenTitle = doc.title;
+      doc.title = U.handoutName(TS.store.state.settings);
+    });
+    root.addEventListener('afterprint', function () {
+      if (screenTitle !== null) doc.title = screenTitle;
+      screenTitle = null;
+    });
 
     $('btn-pdf').addEventListener('click', function () {
       try {

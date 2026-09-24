@@ -1146,6 +1146,92 @@
 
   /* ---- 9. defaults ------------------------------------------------------- */
 
+  /* ---- columns on the calendar ------------------------------------------ */
+
+  function testDayColumns(r) {
+    var n = 0;
+    var at = function (tutorId, from, to) {
+      return { id: 'b' + (n++), tutorId: tutorId, day: 4, startSlot: U.hhmmToSlot(from),
+        endSlot: U.hhmmToSlot(to) };
+    };
+
+    // The Friday from the handout: Chance is in before and after a break, and
+    // was drawn on the right in the morning and the left after lunch.
+    var friday = [at('bailey', '09:00', '12:00'), at('chance', '09:00', '12:30'),
+      at('chance', '13:00', '16:00')];
+    var place = TS.calendar.layoutDay(friday);
+    r.eq(place[friday[1].id].lane, place[friday[2].id].lane,
+      'a tutor back from a break is in the column they left');
+    r.eq(place[friday[1].id].lane, 0, 'the tutor with the most hours that day is on the left');
+    r.eq(place[friday[0].id].lane, 1, 'and the one with fewer is on the right');
+    r.eq(place[friday[2].id].lanes, 2, 'every block on the day shares the day\'s columns');
+
+    // Listed in a different order, the same day comes out the same.
+    var shuffled = TS.calendar.layoutDay(friday.slice().reverse());
+    r.ok(friday.every(function (b) { return shuffled[b.id].lane === place[b.id].lane; }),
+      'the columns do not depend on the order the shifts are stored in');
+
+    // A day where each column is reused: nobody is squeezed into a third
+    // column while one sits empty for all of their hours.
+    var monday = [at('chloe', '09:00', '12:00'), at('chloe', '12:30', '16:00'),
+      at('olivia', '09:00', '10:30'), at('ellie', '11:00', '14:00'),
+      at('ashley', '13:00', '17:00'), at('chance', '14:00', '18:00'), at('kaitlyn', '17:00', '20:00')];
+    var mon = TS.calendar.layoutDay(monday);
+    r.eq(mon[monday[0].id].lane, 0, 'the longest day on the calendar takes the first column');
+    r.eq(mon[monday[0].id].lane, mon[monday[1].id].lane, 'and keeps it after the break');
+    r.eq(mon[monday[0].id].lanes, 3, 'three at once needs three columns, and no more');
+
+    // Across real weeks: one column per tutor per day, and never two blocks at
+    // the same time in one column.
+    var clash = false, moved = false;
+    [1, 2, 3].forEach(function (seed) {
+      var state = fixtureState();
+      state.assignments = TS.optimizer.optimize(state, { seed: seed, iterations: 4000 });
+      for (var d = 0; d < U.DAYS; d++) {
+        var day = U.mainShifts(state.assignments).filter(function (a) { return a.day === d; });
+        var p = TS.calendar.layoutDay(day);
+        var laneOf = {};
+        day.forEach(function (a) {
+          if (laneOf[a.tutorId] !== undefined && laneOf[a.tutorId] !== p[a.id].lane) moved = true;
+          laneOf[a.tutorId] = p[a.id].lane;
+          day.forEach(function (b) {
+            if (a !== b && p[a.id].lane === p[b.id].lane &&
+                a.startSlot < b.endSlot && b.startSlot < a.endSlot) clash = true;
+          });
+        });
+      }
+    });
+    r.ok(!moved, 'across optimized weeks, no tutor changes column within a day');
+    r.ok(!clash, 'and no two blocks share a column at the same time');
+  }
+
+  /* ---- the handout's file name ---------------------------------------- */
+
+  function testHandoutName(r) {
+    var today = new Date(2026, 8, 24);
+    var name = function (effective, term) {
+      return U.handoutName({ title: 'Life Science Tutor Schedule', effective: effective, term: term }, today);
+    };
+    r.eq(name('Aug 24 – Dec 11', 'Fall 2026'), 'Life Science Tutor Schedule 8-24-2026',
+      'the file is named for the day the schedule takes effect');
+    r.eq(name('August 24, 2026 - December 11, 2026', ''), 'Life Science Tutor Schedule 8-24-2026',
+      'written out in full, the start date is still found');
+    r.eq(name('8/24 - 12/11', 'Spring 2027'), 'Life Science Tutor Schedule 8-24-2027',
+      'a start with no year takes the semester\'s');
+    r.eq(name('2026-08-24 to 2026-12-11', ''), 'Life Science Tutor Schedule 8-24-2026',
+      'an ISO date reads too');
+    r.eq(name('Dec 1 – Jan 15, 2027', ''), 'Life Science Tutor Schedule 12-1-2026',
+      'dates that run over New Year start in the year before the one written');
+    r.eq(name('Starts 8/24/26', ''), 'Life Science Tutor Schedule 8-24-2026', 'a two-digit year reads');
+    r.eq(name('', 'Fall 2026'), 'Life Science Tutor Schedule 9-24-2026',
+      'with no effective date, the file is named for today');
+    r.eq(name('Feb 30 – Mar 3', ''), 'Life Science Tutor Schedule 9-24-2026',
+      'and so it is when the start is not a real date');
+    r.eq(U.handoutName({ title: 'Bio/Micro: Fall', effective: 'Aug 24' }, today),
+      'Bio Micro Fall 8-24-2026',
+      'characters a file name cannot hold are dropped from the title');
+  }
+
   function testDefaults(r) {
     var s = TS.store.defaultSettings();
     r.eq(s.defaultMaxHours, 20, 'a tutor is approved for 20 hours a week by default');
@@ -1342,6 +1428,8 @@
     testShiftKinds(r);
     testMergeTouching(r);
     testDefaults(r);
+    testHandoutName(r);
+    testDayColumns(r);
     testEveningCap(r);
     testContinuousShifts(r);
     testEmptyRoster(r);

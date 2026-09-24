@@ -452,9 +452,7 @@
       drawListing(pdf, state, labels, pageW, pageH, margin);
     }
 
-    var name = 'life-science-tutor-schedule' +
-      (s.term ? '-' + s.term.replace(/\s+/g, '-').toLowerCase() : '') + '.pdf';
-    return { pdf: pdf, filename: name };
+    return { pdf: pdf, filename: U.handoutName(s) + '.pdf' };
   }
 
   /* A whole handout page: the header, the week, the band of shifts held
