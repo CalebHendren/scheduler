@@ -48,8 +48,9 @@
     return cls;
   }
 
-  function blockCell(a, labels, cls) {
+  function blockCell(a, labels, cls, lanes, dayCount) {
     var tutor = TS.store.getTutor(a.tutorId);
+    var namePt = fitSize([labels[tutor.id]], laneWidth(lanes, dayCount), NAME_PT, true);
     var colors = U.blockColors(tutor.colorIndex, false); // print is always light
     var mask = U.subjectMask(tutor.subjects);
     var shorts = U.maskToShort(mask);
@@ -57,7 +58,7 @@
     return '<td class="' + cls + '" rowspan="' + (a.endSlot - a.startSlot) + '"' +
       ' style="background:' + colors.bg + ';border-left:4px solid ' + colors.bar + ';color:' + colors.ink + '"' +
       (U.usesHatch(tutor.colorIndex) ? ' data-hatch="1"' : '') + '>' +
-      '<span class="pv-block__name">' + esc(labels[tutor.id]) + '</span>' +
+      '<span class="pv-block__name"' + sizeStyle(namePt, NAME_PT) + '>' + esc(labels[tutor.id]) + '</span>' +
       '<span class="pv-block__time">' + esc(U.formatRange(a.startSlot, a.endSlot)) + '</span>' +
       '<span class="pv-block__subjects">' + (shorts.join(' · ') || '—') + '</span>' +
       '<span class="visually-hidden">' + esc(full) + '</span>' +
@@ -96,7 +97,7 @@
           if (!item) {
             html += '<td class="' + cellClass('pv-empty', d, l, days[d].lanes) + '"></td>';
           } else if (item.startSlot === s) {
-            html += cellFor(item, cellClass('pv-block', d, l, days[d].lanes), days[d].lanes, rowPx);
+            html += cellFor(item, cellClass('pv-block', d, l, days[d].lanes), days[d].lanes, rowPx, U.DAYS);
           }
         }
       }
@@ -113,7 +114,7 @@
     var days = [];
     for (var d = 0; d < U.DAYS; d++) days.push(laneGrid(drawn, d));
     return gridTable('Weekly tutoring schedule', U.scheduleWindow(drawn), days,
-      function (a, cls) { return blockCell(a, labels, cls); });
+      function (a, cls, lanes, rowPx, dayCount) { return blockCell(a, labels, cls, lanes, dayCount); });
   }
 
   /* The same grid read the other way round: one lane per class rather than per
@@ -160,7 +161,7 @@
     portrait: { width: 739, grid: 600 }     // 8.5 x 11in
   };
   var page = PAGES.landscape;              // set from the schedule on each render
-  var GUTTER_PX = 52;      // .pv-time
+  var GUTTER_PX = 62;      // .pv-time
   var ROW_MIN_PX = 14, ROW_MAX_PX = 34;
 
   function rowPxFor(win) {
@@ -168,52 +169,69 @@
     return Math.max(ROW_MIN_PX, Math.min(ROW_MAX_PX, Math.floor(page.grid / rows)));
   }
 
-  var LABEL_PX = 12;       // .pv-block__name, 8pt at line-height 1.1
-  var LINE_PX = 10;        // .pv-block__who and __time, 6.5pt at about 1.15
+  var LABEL_PX = 14;       // .pv-block__name, 9pt at line-height 1.1
+  var LINE_PX = 12;        // .pv-block__who and __time in a class block, 7.5pt
+  var SMALL_LINE_PX = 10;  // the same at 6.5pt and under
 
-  /* How wide a time reads at 6.5pt, measured in Chrome. A time only ever uses
-   * these characters; anything else is priced as the widest. A pixel is kept
-   * in hand, because a time that wraps when it was not expected to would push
-   * itself out of the bottom of its stretch -- budgeting one line too many
-   * only costs a line of names.
-   */
-  var TIME_CHAR_PX = { ':': 1.9, '–': 4.4, ' ': 2.3, A: 5.6, P: 4.9, M: 7.8 };
-  var DIGIT_PX = 4.7;
+  /* The sizes print.css gives a block's text, in points, then the ones it
+   * steps down to where a lane is too narrow for it: first the size the
+   * handout used before its text was enlarged, then one smaller still. A name
+   * is never broken in two or cut short while a smaller size would hold it. */
+  var NAME_PT = [9, 8, 7];       // a tutor's name on the tutor calendar, bold
+  var CODE_PT = [9, 8, 6.5];     // a class code, bold
+  var WHO_PT = [7.5, 6.5, 6];    // the names in a class block
+  var TIME_PT = [7.5, 6.5, 6];   // a class block's times
 
-  // Names are ordinary words, priced at a slightly generous average and wrapped
-  // at spaces the way the browser will.
-  var NAME_CHAR_PX = 4.6;
+  /* Text is measured with the print font in the browser that prints it, so
+   * the answer holds whichever of the font stack the machine has. With no
+   * canvas to measure on, a generous average stands in. */
+  var FONT_STACK = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+  var measurer = null;
 
-  // A class code at 8pt bold. Wider than the lane -- three lanes to a day on a
-  // portrait page -- and it steps down to 6.5pt rather than lose a letter.
-  var CODE_CHAR_PX = 7.2;
+  function textPx(text, pt, bold) {
+    if (measurer === null) {
+      try { measurer = (doc && doc.createElement('canvas').getContext('2d')) || false; }
+      catch (e) { measurer = false; }
+    }
+    if (!measurer) return text.length * pt * (bold ? 0.95 : 0.75);
+    measurer.font = (bold ? '700 ' : '400 ') + pt + 'pt ' + FONT_STACK;
+    return measurer.measureText(text).width;
+  }
 
-  function nameLinesNeeded(text, width) {
-    var lines = 1, used = 0;
+  // The first of `sizes` at which every one of `words` fits `width`, or the
+  // smallest.
+  function fitSize(words, width, sizes, bold) {
+    for (var i = 0; i < sizes.length - 1; i++) {
+      var fits = words.every(function (w) { return textPx(w, sizes[i], bold) <= width; });
+      if (fits) return sizes[i];
+    }
+    return sizes[sizes.length - 1];
+  }
+
+  // Only a size stepped down from print.css's is written on the element.
+  function sizeStyle(pt, sizes) {
+    return pt === sizes[0] ? '' : ' style="font-size:' + pt + 'pt"';
+  }
+
+  // A lane's text width: the 4px bar, 3px padding each side and the borders.
+  function laneWidth(lanes, dayCount) {
+    return (page.width - GUTTER_PX) / dayCount / Math.max(1, lanes) - 11.5;
+  }
+
+  // Wrapped at spaces, the way the browser will.
+  function nameLinesNeeded(text, width, pt) {
+    var lines = 1, line = '';
     text.split(' ').forEach(function (word) {
-      var w = word.length * NAME_CHAR_PX;
-      // A name wider than the lane breaks inside itself (print.css), on a
-      // line of its own and as many more as it takes.
-      if (w > width) {
-        if (used) lines++;
-        var whole = Math.ceil(w / width);
-        lines += whole - 1;
-        used = w - (whole - 1) * width;
-        return;
-      }
-      var add = used ? w + NAME_CHAR_PX : w;
-      if (used && used + add > width) { lines++; used = w; } else used += add;
+      var next = line ? line + ' ' + word : word;
+      if (line && textPx(next, pt) > width) { lines++; line = word; } else line = next;
     });
     return lines;
   }
 
+  // A pixel is kept in hand: a time that wraps when it was not expected to
+  // would push itself out of the bottom of its stretch.
   function fitsOneLine(text, width) {
-    var px = 0;
-    for (var i = 0; i < text.length; i++) {
-      var c = text.charAt(i);
-      px += /[0-9]/.test(c) ? DIGIT_PX : (TIME_CHAR_PX[c] || 7.8);
-    }
-    return px <= width - 1;
+    return textPx(text, TIME_PT[0]) <= width - 1;
   }
 
   /* The class code heads the block and the block runs as long as the class is
@@ -231,8 +249,7 @@
     var spoken = run.subjects.map(function (i) { return U.SUBJECTS[i].label; });
     var who = namesOf(run.tutorIds, labels);
     var rows = run.endSlot - run.startSlot;
-    // 4px bar, 3px padding each side and the borders, as measured.
-    var width = (page.width - GUTTER_PX) / U.DAYS / Math.max(1, lanes) - 11.5;
+    var width = laneWidth(lanes, U.DAYS);
 
     // Placed as a share of the block rather than in pixels, so each rule lands
     // on its hour however tall the rows come out.
@@ -240,8 +257,8 @@
     function layout(seg, i) {
       // The first stretch shares its box with the class code; each later one
       // starts under its rule (.pv-seg--after, 1px border and 1px padding).
-      var lines = Math.floor(((seg.endSlot - seg.startSlot) * rowPx - 3 -
-        (i === 0 ? LABEL_PX : 2)) / LINE_PX);
+      var room = (seg.endSlot - seg.startSlot) * rowPx - 3 - (i === 0 ? LABEL_PX : 2);
+      var lines = Math.floor(room / LINE_PX);
 
       var full = U.formatRange(seg.startSlot, seg.endSlot);
       var range = full.split('–');
@@ -256,14 +273,28 @@
           '<span class="pv-nowrap">' + esc(range[1]) + '</span>';
         out.timeLines = 2;
       } else {
-        out.time = esc(U.formatRangeCompact(seg.startSlot, seg.endSlot)); out.timeLines = 1;
+        // The short form, a size or two down if the lane needs it, on one line;
+        // failing that, as the downloaded PDF does, the time it starts.
+        var start = U.slotStartMinutes(seg.startSlot);
+        var forms = [U.formatRangeCompact(seg.startSlot, seg.endSlot), U.formatMinutes(start),
+          U.formatMinutes(start, { omitSuffix: true })];
+        var form = forms[forms.length - 1], timePt = TIME_PT[TIME_PT.length - 1];
+        for (var f = 0; f < forms.length; f++) {
+          var pt = fitSize([forms[f]], width - 1, TIME_PT);
+          if (textPx(forms[f], pt) <= width - 1) { form = forms[f]; timePt = pt; break; }
+        }
+        out.time = '<span class="pv-nowrap"' + sizeStyle(timePt, TIME_PT) + '>' + esc(form) + '</span>';
+        out.timeLines = 1;
       }
-      out.nameLines = Math.max(0, lines - out.timeLines);
-      out.fits = nameLinesNeeded(out.text, width) <= out.nameLines;
+      // A name too wide for the lane at full size is set smaller, not broken.
+      out.whoPt = fitSize(out.text.split(' '), width, WHO_PT);
+      out.whoLine = out.whoPt === WHO_PT[0] ? LINE_PX : SMALL_LINE_PX;
+      out.nameLines = Math.max(0, Math.floor((room - out.timeLines * LINE_PX) / out.whoLine));
+      out.fits = nameLinesNeeded(out.text, width, out.whoPt) <= out.nameLines;
       return out;
     }
 
-    var small = run.label.length * CODE_CHAR_PX > width;
+    var codePt = fitSize([run.label], width, CODE_PT, true);
     var merged = U.mergeCrampedSegments(run.segments, function (seg, i) {
       return layout(seg, i).fits;
     });
@@ -271,13 +302,14 @@
       var fit = layout(seg, i);
       var time = fit.time;
       var names = fit.nameLines
-        ? '<span class="pv-block__who" style="-webkit-line-clamp:' + fit.nameLines + '">' +
+        ? '<span class="pv-block__who" style="-webkit-line-clamp:' + fit.nameLines +
+            (fit.whoPt === WHO_PT[0] ? '' : ';font-size:' + fit.whoPt + 'pt;line-height:' + fit.whoLine + 'px') + '">' +
             esc(fit.text) + '</span>'
         : '';
 
       return '<div class="pv-seg' + (i ? ' pv-seg--after' : '') + '" style="top:' +
           pct(seg.startSlot - run.startSlot) + ';height:' + pct(seg.endSlot - seg.startSlot) + '">' +
-        (i === 0 ? '<span class="pv-block__name' + (small ? ' pv-block__name--small' : '') + '">' +
+        (i === 0 ? '<span class="pv-block__name"' + sizeStyle(codePt, CODE_PT) + '>' +
           esc(run.label) + '</span>' : '') +
         names + '<span class="pv-block__time">' + time + '</span>' +
         '</div>';

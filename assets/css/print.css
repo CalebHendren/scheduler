@@ -31,7 +31,7 @@
 html, body {
   background: #fff !important;
   color: #14181F !important;
-  font-size: 9.5pt;
+  font-size: 10.5pt;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 }
 
@@ -52,20 +52,20 @@ html, body {
 }
 .pv-head__main { flex: 1 1 auto; }
 .pv-college {
-  margin: 0; font-size: 8pt; letter-spacing: .14em; text-transform: uppercase;
+  margin: 0; font-size: 8.5pt; letter-spacing: .14em; text-transform: uppercase;
   color: #10305F; font-weight: 700;
 }
 .pv-head h1 {
   margin: 1px 0 0; font-family: Georgia, "Times New Roman", serif;
-  font-size: 15pt; color: #002855;
+  font-size: 16pt; color: #002855;
 }
 .pv-term {
   margin: 2px 0 0; font-family: Georgia, "Times New Roman", serif;
-  font-size: 11pt; font-weight: 700; color: #10305F;
+  font-size: 12pt; font-weight: 700; color: #10305F;
 }
-.pv-subtitle { margin: 1px 0 0; font-size: 9pt; color: #3A4553; }
-.pv-where { margin: 2px 0 0; font-size: 9.5pt; font-weight: 700; }
-.pv-head__contact { text-align: right; font-size: 8.5pt; line-height: 1.35; }
+.pv-subtitle { margin: 1px 0 0; font-size: 10pt; color: #3A4553; }
+.pv-where { margin: 2px 0 0; font-size: 10.5pt; font-weight: 700; }
+.pv-head__contact { text-align: right; font-size: 9.5pt; line-height: 1.35; }
 .pv-head__contact p { margin: 0; }
 
 /* ---- grid -------------------------------------------------------------- */
@@ -77,13 +77,13 @@ html, body {
 .pv-table thead th {
   background: #10305F; color: #fff;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 10pt; padding: 3px 2px;
+  font-size: 11pt; padding: 3px 2px;
   border: 1px solid #10305F;
 }
-.pv-time-head { width: 52px; }
+.pv-time-head { width: 62px; }
 .pv-time {
-  width: 52px; text-align: right; padding: 0 4px 0 0;
-  font-size: 7.5pt; line-height: 12px; color: #3A4553; font-weight: 600;
+  width: 62px; text-align: right; padding: 0 4px 0 0;
+  font-size: 8.5pt; line-height: 13px; color: #3A4553; font-weight: 600;
   white-space: nowrap;
   vertical-align: top;
 }
@@ -104,10 +104,9 @@ html, body {
 .pv-block[data-hatch="1"] {
   background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.14) 0 4px, transparent 4px 9px);
 }
-.pv-block__name { display: block; font-weight: 700; font-size: 8pt; }
-.pv-block__name--small { font-size: 6.5pt; }
-.pv-block__time { display: block; font-size: 6.5pt; }
-.pv-block__subjects { display: block; font-size: 6.5pt; font-weight: 700; letter-spacing: .02em; }
+.pv-block__name { display: block; font-weight: 700; font-size: 9pt; }
+.pv-block__time { display: block; font-size: 7.5pt; }
+.pv-block__subjects { display: block; font-size: 7.5pt; font-weight: 700; letter-spacing: .02em; }
 
 /* ---- day separation ----
    A day can run several lanes wide, so the day break needs a rule that is
@@ -131,11 +130,11 @@ html, body {
 .pv-offroom__run + .pv-offroom__run { margin-top: 2px; }
 .pv-offroom h2 {
   display: inline; font-family: Georgia, "Times New Roman", serif;
-  font-size: 8.5pt; color: #002855; margin-right: .35em;
+  font-size: 9.5pt; color: #002855; margin-right: .35em;
 }
 .pv-offroom h2::after { content: ":"; }
 .pv-offroom ul {
-  display: inline; list-style: none; margin: 0; padding: 0; font-size: 7.5pt;
+  display: inline; list-style: none; margin: 0; padding: 0; font-size: 8.5pt;
 }
 .pv-offroom li { display: inline; }
 .pv-offroom li + li::before { content: " · "; font-weight: 700; }
@@ -148,10 +147,10 @@ html, body {
   page-break-inside: avoid;
 }
 .pv-notes h2 {
-  font-family: Georgia, "Times New Roman", serif; font-size: 9pt;
+  font-family: Georgia, "Times New Roman", serif; font-size: 10pt;
   margin: 0 0 1px; color: #002855;
 }
-.pv-notes p { margin: 0; font-size: 8pt; line-height: 1.3; }
+.pv-notes p { margin: 0; font-size: 9pt; line-height: 1.3; }
 
 /* ---- footer ------------------------------------------------------------ */
 
@@ -161,18 +160,18 @@ html, body {
   page-break-inside: avoid;
 }
 .pv-qr .qr-svg { width: 58px; height: 58px; border: 1px solid #B9C3D1; }
-.pv-qr__text { font-size: 7.5pt; line-height: 1.3; max-width: 190px; }
+.pv-qr__text { font-size: 8.5pt; line-height: 1.3; max-width: 190px; }
 .pv-qr__text p { margin: 0 0 1px; }
 
 .pv-legend { flex: 1 1 auto; }
-.pv-legend h2 { font-size: 9pt; margin: 0 0 3px; font-family: Georgia, serif; }
+.pv-legend h2 { font-size: 10pt; margin: 0 0 3px; font-family: Georgia, serif; }
 .pv-legend ul {
   list-style: none; margin: 0; padding: 0;
-  display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 7.5pt;
+  display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 8.5pt;
 }
 .pv-legend li { display: flex; align-items: center; gap: 5px; }
 .pv-swatch { display: inline-block; width: 16px; height: 10px; border: 1px solid #6B7789; }
-.pv-legend__subjects { color: #3A4553; font-weight: 700; font-size: 7pt; }
+.pv-legend__subjects { color: #3A4553; font-weight: 700; font-size: 8pt; }
 
 /* Each 7 weeks starts a sheet of its own, with the inset the print root only
    gives the first page. */
@@ -194,7 +193,7 @@ html, body {
 }
 /* A class block carries a short code rather than a name, so the tutors under
    it are what the width is actually spent on. */
-.pv-block__who { display: block; font-size: 6.5pt; line-height: 1.15; }
+.pv-block__who { display: block; font-size: 7.5pt; line-height: 1.15; }
 /* Where the tutors change inside a class block: a faint rule at that hour, and
    the new stretch's hours and names under it. */
 /* Exactly as tall as the rows the block spans (set in printview.js), so its
@@ -207,12 +206,9 @@ html, body {
 .pv-seg { position: absolute; left: 0; right: 0; overflow: hidden; }
 .pv-seg > .pv-block__who {
   display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
-  line-height: 10px;
-  /* A name wider than a narrow lane wraps inside itself rather than being
-     cut off at the lane's edge, as the downloaded PDF does. */
-  overflow-wrap: anywhere;
+  line-height: 12px;
 }
-.pv-seg > .pv-block__time { line-height: 10px; }
+.pv-seg > .pv-block__time { line-height: 12px; }
 .pv-seg--after { border-top: 1px solid rgba(20, 24, 31, .22); padding-top: 1px; }
 
 /* ---- text listing ------------------------------------------------------ */
@@ -232,20 +228,20 @@ html, body {
   padding-bottom: 0.4in;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
-  font-size: 9pt;
+  font-size: 10pt;
   column-count: 2;
   column-gap: 26px;
   column-fill: balance;
 }
 .pv-listing h2 {
-  font-family: Georgia, serif; font-size: 13pt; color: #002855; margin: 0 0 6px;
+  font-family: Georgia, serif; font-size: 14pt; color: #002855; margin: 0 0 6px;
   column-span: all;
 }
 .pv-listing__day {
   break-inside: avoid; page-break-inside: avoid;
 }
 .pv-listing h3 {
-  font-family: Georgia, serif; font-size: 10.5pt; margin: 8px 0 2px;
+  font-family: Georgia, serif; font-size: 11.5pt; margin: 8px 0 2px;
   border-bottom: 1px solid #B9C3D1;
 }
 .pv-listing__day:first-child h3 { margin-top: 0; }
