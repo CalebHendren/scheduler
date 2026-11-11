@@ -6,17 +6,24 @@
   var esc = function (s) { return TS.tutors.esc(s); };
 
   /*
-   * THE HALL VERSION -- what Print / Save as PDF prints, and what is posted in
-   * the halls for students. It is written for someone walking past: no
-   * legend, no floating embedded tutors (they only help the class they sit
-   * in), and along the bottom the QR code to book an appointment beside the
-   * Library Boneyard Tutoring and Open Lab blocks.
+   * Each 7 weeks prints as two pages, and the center calls them by who reads
+   * them. Both buttons print both, in this order:
    *
-   * Its twin is THE ADMIN VERSION in pdf.js (Download PDF), for the people
-   * who run the center: the same calendars, with the embedded tutors and a
-   * legend in place of the QR code. A change to one is usually wanted in the
-   * other; the two differ only where the comments say so.
+   *   1. THE HALL VERSION -- the week read by class (BIO, MICRO, AP1&2 lanes),
+   *      posted in the halls for students. Along its foot: the QR code to
+   *      book an appointment, then the Library Boneyard Tutoring and Open Lab
+   *      blocks. No floating embedded tutors -- they only help the class they
+   *      sit in -- and no legend.
+   *   2. THE ADMIN VERSION -- the week read by tutor (a block per shift, named),
+   *      for the people who run the center. Along its foot, where the hall
+   *      version has its QR code: the Floating Embedded Tutors, by name, then
+   *      the same Library Boneyard Tutoring and Open Lab blocks. No legend.
+   *
+   * This file draws them for Print / Save as PDF; pdf.js draws the same two
+   * for Download PDF. A change to one output is wanted in the other.
    */
+  var HALL_BLOCKS = ['library', 'lab'];
+  var ADMIN_BLOCKS = ['embedded', 'library', 'lab'];
 
   /*
    * Lane grids per day. The screen view can position blocks freely, but a
@@ -360,46 +367,42 @@
       days, function (run, cls, lanes, rowPx) { return subjectCell(run, labels, cls, lanes, rowPx); });
   }
 
-  /* ---- also find tutoring ----
-   * The footer's two blocks, beside the QR code: library tutoring on the
-   * left, the open lab on the right. They are the other places a student can
-   * walk in for help, so each one is a box of its own that reads from across
-   * a hallway, not a footnote. Floating embedded tutors are left off the hall
-   * handout altogether -- they only help the class they sit in, and those
-   * students already know -- but stay in the app and the listing.
+  /* ---- the blocks along the foot ----
+   * The other places a student can find a tutor, each a box of its own that
+   * reads from across a hallway rather than a footnote: library tutoring and
+   * the open lab on both versions, and on the admin version the floating
+   * embedded tutors first, read by name (U.footerBlocks).
    */
-  var SPOT_KINDS = ['library', 'lab'];
-
-  function spotRuns(state, labels) {
-    var runs = U.offRoomRuns(state.assignments, labels, state.tutors);
-    return SPOT_KINDS.map(function (key) {
-      return runs.filter(function (run) { return run.kind === key; })[0];
-    }).filter(Boolean);
+  function blockRow(block, r) {
+    var room = r.room ? ' <span class="pv-spot__where">(' + esc(r.room) + ')</span>' : '';
+    if (block.byName) {
+      return '<tr><th scope="row">' + esc(r.name) + '</th>' +
+        '<td class="pv-nowrap">' + esc(r.days) + '</td>' +
+        '<td class="pv-nowrap">' + esc(r.time) + '</td>' +
+        '<td class="pv-spot__where">' + esc(r.room) + '</td></tr>';
+    }
+    return '<tr><th scope="row">' + esc(r.days) + '</th>' +
+      '<td class="pv-nowrap">' + esc(r.time) + '</td>' +
+      '<td>' + esc(r.name) + room + '</td></tr>';
   }
 
-  function buildSpots(state, labels) {
-    return spotRuns(state, labels).map(function (run) {
-      var rows = run.entries.map(function (e) {
-        var tutor = TS.store.getTutor(e.tutorId);
-        if (!tutor) return '';
-        return '<tr><th scope="row">' + esc(U.daysLabel(e.days)) + '</th>' +
-          '<td class="pv-nowrap">' + esc(U.formatRange(e.startSlot, e.endSlot)) + '</td>' +
-          '<td>' + (e.sameTutor ? '' : esc(labels[tutor.id])) +
-            (e.room ? ' <span class="pv-spot__where">(' + esc(e.room) + ')</span>' : '') + '</td></tr>';
-      }).join('');
-      return '<section class="pv-spot pv-spot--' + run.kind + '">' +
-        '<h2><span>' + esc(run.title) + '</span>' +
-          (run.room ? '<span class="pv-spot__room">' + esc(run.room) + '</span>' : '') + '</h2>' +
-        (run.only ? '<p class="pv-spot__only">' + esc(run.only) + '</p>' : '') +
-        '<table class="pv-spot__list"><tbody>' + rows + '</tbody></table>' +
+  function buildBlocks(state, labels, kinds) {
+    return U.footerBlocks(state.assignments, labels, state.tutors, kinds).map(function (block) {
+      return '<section class="pv-spot pv-spot--' + block.kind + '">' +
+        '<h2><span>' + esc(block.title) + '</span>' +
+          (block.room ? '<span class="pv-spot__room">' + esc(block.room) + '</span>' : '') + '</h2>' +
+        (block.only ? '<p class="pv-spot__only">' + esc(block.only) + '</p>' : '') +
+        '<table class="pv-spot__list' + (block.byName ? ' pv-spot__list--names' : '') + '"><tbody>' +
+          block.rows.map(function (r) { return blockRow(block, r); }).join('') +
+        '</tbody></table>' +
         '</section>';
     }).join('');
   }
 
-  // The most rows either block runs to.
-  function spotRows(state, labels) {
-    return spotRuns(state, labels).reduce(function (most, run) {
-      return Math.max(most, run.entries.length + (run.only ? 1 : 0));
+  // The most rows any block on the page runs to.
+  function blockRows(state, labels, kinds) {
+    return U.footerBlocks(state.assignments, labels, state.tutors, kinds).reduce(function (most, b) {
+      return Math.max(most, b.rows.length + (b.only ? 1 : 0));
     }, 0);
   }
 
@@ -488,47 +491,58 @@
       '"><h2>Important notes</h2><p>' + esc(notes) + '</p></section>';
   }
 
-  function buildFoot(state, spotsHtml) {
+  // The hall version leads with the QR code; the admin version has none.
+  function buildFoot(state, blocksHtml, withQr) {
     var s = state.settings;
     // The link itself is left off the page: it is long and carries an id
     // nobody would type, so the code is what gets used.
-    var qrSvg = TS.qr.toSvg(s.qrUrl, { label: 'QR code: ' + (s.qrHeading || s.qrUrl) });
-    return '<div class="pv-foot">' +
-      '<div class="pv-qr">' + qrSvg + '</div>' +
-      '<div class="pv-qr__text">' +
-        (s.qrHeading ? '<p><strong>' + esc(s.qrHeading) + '</strong></p>' : '') +
-        (s.qrCaption ? '<p>' + esc(s.qrCaption) + '</p>' : '') +
-      '</div>' +
-      spotsHtml +
-      '</div>';
+    var qr = withQr
+      ? '<div class="pv-qr">' + TS.qr.toSvg(s.qrUrl, { label: 'QR code: ' + (s.qrHeading || s.qrUrl) }) + '</div>' +
+        '<div class="pv-qr__text">' +
+          (s.qrHeading ? '<p><strong>' + esc(s.qrHeading) + '</strong></p>' : '') +
+          (s.qrCaption ? '<p>' + esc(s.qrCaption) + '</p>' : '') +
+        '</div>'
+      : '';
+    if (!qr && !blocksHtml) return '';
+    return '<div class="pv-foot">' + qr + blocksHtml + '</div>';
   }
 
-  /* A whole handout page: the furniture wrapped round one grid. No legend:
-   * every block already carries its tutor's name or its class's code. */
-  function buildHandout(state, labels, tableHtml) {
+  /* A whole handout page: the furniture wrapped round one grid and the
+   * blocks along its foot. No legend: every block in the grid already
+   * carries its tutor's name or its class's code. */
+  function buildHandout(state, labels, tableHtml, hall) {
     var notesHere = notesInHead(state);
     return buildHead(state, notesHere) +
       tableHtml +
       (notesHere ? '' : buildNotes(state, false)) +
-      buildFoot(state, buildSpots(state, labels));
+      buildFoot(state, buildBlocks(state, labels, hall ? HALL_BLOCKS : ADMIN_BLOCKS), hall);
   }
 
-  /* One half's pages. Printed double sided, the two calendars are the two
-   * faces of one sheet. With the listing on, it follows each calendar instead,
-   * so each sheet carries a calendar on one face and the listing on the other.
+  // The grid's share of the page, worked out before the grid is built: see
+  // NOTES_MOVED_PX.
+  function setGridBonus(view, labels, kinds) {
+    gridBonus = (notesInHead(view) ? NOTES_MOVED_PX : 0) + BAND_FREED_PX -
+      Math.max(0, blockRows(view, labels, kinds) - SPOT_BASE_ROWS) * SPOT_ROW_PX;
+  }
+
+  /* One half's pages: the hall version, then the admin version -- the hall
+   * version is the one printed most, so it comes first. Printed double sided,
+   * the two are the two faces of one sheet. With the listing on, it follows
+   * each calendar instead, so each sheet carries a calendar on one face and
+   * the listing on the other.
    */
   function renderPeriod(view) {
     var labels = U.displayNames(view.tutors);
     var runs = U.coverageRuns(view.assignments, view.tutors);
     var listing = view.settings.includeListing ? buildListing(view, labels) : '';
-    gridBonus = (notesInHead(view) ? NOTES_MOVED_PX : 0) + BAND_FREED_PX -
-      Math.max(0, spotRows(view, labels) - SPOT_BASE_ROWS) * SPOT_ROW_PX;
+    setGridBonus(view, labels, HALL_BLOCKS);
+    var hall = buildHandout(view, labels, buildSubjectTable(view, labels, runs), true);
+    setGridBonus(view, labels, ADMIN_BLOCKS);
+    var admin = buildHandout(view, labels, buildTable(view, labels), false);
     return '<section class="pv-period">' +
-      buildHandout(view, labels, buildTable(view, labels)) +
+      '<section class="pv-hall">' + hall + '</section>' +
       listing +
-      '<section class="pv-coverage">' +
-        buildHandout(view, labels, buildSubjectTable(view, labels, runs)) +
-      '</section>' +
+      '<section class="pv-admin">' + admin + '</section>' +
       listing +
       '</section>';
   }

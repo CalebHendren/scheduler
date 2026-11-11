@@ -210,6 +210,46 @@
     }).filter(Boolean);
   }
 
+  /* The blocks along the foot of a handout page, in the order asked for --
+   * the hall version's ['library', 'lab'], the admin version's ['embedded',
+   * 'library', 'lab'] -- each one a heading (title, the room on its right),
+   * the classes a walk-in block is for, and a row per entry. Both outputs
+   * draw from this, so the print view and the download cannot disagree.
+   *
+   * The embedded tutors are read by person: their block is `byName`, its rows
+   * in name order, and a renderer leads each row with the name. The others
+   * read by day, as the grid does. Either way a tutor's name is left off a
+   * row that follows one of their own.
+   */
+  function footerBlocks(assignments, labels, tutors, kinds) {
+    var runs = offRoomRuns(assignments, labels, tutors);
+    var known = {};
+    (tutors || []).forEach(function (t) { known[t.id] = true; });
+    return kinds.map(function (key) {
+      var run = runs.filter(function (r) { return r.kind === key; })[0];
+      if (!run) return null;
+      var byName = key === 'embedded';
+      var entries = run.entries.filter(function (e) { return known[e.tutorId]; });
+      if (byName) {
+        entries.sort(function (a, b) {
+          return compareNames(labels[a.tutorId] || '', labels[b.tutorId] || '') ||
+            a.days[0] - b.days[0] || a.startSlot - b.startSlot;
+        });
+      }
+      var rows = entries.map(function (e, i) {
+        return {
+          name: i > 0 && entries[i - 1].tutorId === e.tutorId ? '' : (labels[e.tutorId] || ''),
+          days: daysLabel(e.days),
+          time: formatRange(e.startSlot, e.endSlot),
+          room: e.room
+        };
+      });
+      return rows.length
+        ? { kind: key, title: run.title, room: run.room, only: run.only, byName: byName, rows: rows }
+        : null;
+    }).filter(Boolean);
+  }
+
   /* "Anatomy & Physiology only" for a set of classes short of the whole list,
    * named the way the class page's lanes are (AP1 and AP2 read as one); ''
    * when it is every class, or none. */
@@ -1271,6 +1311,7 @@
     groupOffRoom: groupOffRoom,
     offRoomRuns: offRoomRuns,
     classesOnlyLabel: classesOnlyLabel,
+    footerBlocks: footerBlocks,
     compareNames: compareNames,
     sortedNames: sortedNames,
     capRules: capRules,

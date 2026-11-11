@@ -1047,6 +1047,22 @@
     ], { car: 'Caroline' }, [{ id: 'car', subjects: { ap1: true, ap2: true } }]);
     r.eq(only[0].only, 'Anatomy & Physiology only',
       'a lab run by A&P tutors says it is for A&P only, the pair read as one');
+    var foot = U.footerBlocks([
+      { id: 'f1', tutorId: 'ell', day: 0, startSlot: 16, endSlot: 27, kind: 'embedded', room: 'OMN 296' },
+      { id: 'f2', tutorId: 'bai', day: 1, startSlot: 8, endSlot: 14, kind: 'embedded', room: 'OMN 286' },
+      { id: 'f3', tutorId: 'ell', day: 3, startSlot: 21, endSlot: 27, kind: 'embedded', room: 'OMN 286' },
+      { id: 'f4', tutorId: 'car', day: 4, startSlot: 4, endSlot: 14, kind: 'lab', room: 'OMN 286' }
+    ], { ell: 'Ellie', bai: 'Bailey', car: 'Caroline' }, [
+      { id: 'ell', subjects: { ap1: true } }, { id: 'bai', subjects: { bio: true } },
+      { id: 'car', subjects: { ap1: true, ap2: true } }
+    ], ['embedded', 'library', 'lab']);
+    r.eq(foot.map(function (b) { return b.kind; }).join(','), 'embedded,lab',
+      'the admin foot runs embedded tutors, then the library and lab, skipping what is empty');
+    r.eq(foot[0].rows.map(function (row) { return row.name; }).join(','), 'Bailey,Ellie,',
+      'embedded tutors are read by name, a tutor named once');
+    r.ok(foot[0].byName && !foot[1].byName, 'only the embedded block leads with the name');
+    r.eq(U.footerBlocks([], {}, [], ['library', 'lab']).length, 0, 'nothing held elsewhere, no blocks');
+
     var embeddedOnly = U.offRoomRuns([
       { id: 'c2', tutorId: 'bai', day: 1, startSlot: 8, endSlot: 14, kind: 'embedded', room: 'OMN 286' }
     ], { bai: 'Bailey' }, [{ id: 'bai', subjects: { bio: true, ap1: true } }]);

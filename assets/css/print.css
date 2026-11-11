@@ -216,17 +216,28 @@ html, body {
   page-break-before: always;
 }
 
-/* ---- coverage by class -------------------------------------------------
-   Page one over again on a sheet of its own, with the week read the other way
-   round: one lane per class rather than per tutor, so a student can find their
-   class rather than having to know which tutor teaches it. */
+/* ---- the admin version -------------------------------------------------
+   Each 7 weeks opens on the hall version (the week by class) and turns over
+   to the admin version (the week by tutor) on a sheet of its own. */
 
-.pv-coverage {
+.pv-admin {
   /* The page inset above is the print root's padding, which lands once at the
      top of page one; this page is its own sheet and needs its own. */
   padding-top: 0.4in;
   page-break-before: always;
 }
+/* The embedded tutors are read by name: the name leads each row, and the
+   block takes a wider share, since its rows carry a room as well. */
+.pv-spot__list--names th { font-weight: 700; }
+.pv-spot--embedded { flex-grow: 1.4; }
+.pv-spot__list td.pv-spot__where { font-weight: 400; white-space: nowrap; width: 1%; }
+.pv-spot__list--names td.pv-spot__where { padding-right: 0; }
+.pv-spot__list.pv-spot__list--names { width: auto; }
+.pv-spot__list--names th, .pv-spot__list.pv-spot__list--names td { width: auto; }
+/* Three blocks share a portrait sheet's width on the admin version. */
+.pv-portrait .pv-admin .pv-spot__list { font-size: 8pt; }
+.pv-portrait .pv-spot--embedded { flex-grow: 1.2; }
+
 /* A class block carries a short code rather than a name, so the tutors under
    it are what the width is actually spent on. */
 .pv-block__who { display: block; font-size: 7.5pt; line-height: 1.15; }

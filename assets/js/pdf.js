@@ -4,16 +4,21 @@
   var U = TS.util;
 
   /*
-   * THE ADMIN VERSION -- what Download PDF saves, for the people who run the
-   * center rather than for the halls. The same calendars as the hall version,
-   * with the floating embedded tutors in a block of their own (by tutor name)
-   * where the hall version has its QR code, the Library Boneyard Tutoring and
-   * Open Lab blocks beside it, and the tutor or class legend under them.
+   * Download PDF: the same two pages per 7 weeks as Print / Save as PDF
+   * (printview.js), drawn with jsPDF, in the same order:
    *
-   * Its twin is THE HALL VERSION in printview.js (Print / Save as PDF). A
-   * change to one is usually wanted in the other; the two differ only where
-   * the comments say so.
+   *   1. THE HALL VERSION -- the week read by class, posted in the halls for
+   *      students: the QR code to book an appointment, then the Library
+   *      Boneyard Tutoring and Open Lab blocks along its foot.
+   *   2. THE ADMIN VERSION -- the week read by tutor, for the people who run
+   *      the center: in the QR code's place the Floating Embedded Tutors, by
+   *      name, then the same Library Boneyard Tutoring and Open Lab blocks.
+   *
+   * Neither has a legend: every block in the grid already carries its tutor's
+   * name or its class's code. A change here is wanted in printview.js too.
    */
+  var HALL_BLOCKS = ['library', 'lab'];
+  var ADMIN_BLOCKS = ['embedded', 'library', 'lab'];
 
   var NAVY = [16, 48, 95];
   var ORANGE = [254, 80, 0];
@@ -51,18 +56,6 @@
     pdf.rect(bx, by, 3, bh, 'F');
   }
 
-  // The same thing in miniature, for a legend entry.
-  function drawSwatch(pdf, colors, x, y) {
-    var bg = U.hexToRgb(colors.bg);
-    var bar = U.hexToRgb(colors.bar);
-    pdf.setFillColor(bg[0], bg[1], bg[2]);
-    pdf.setDrawColor(107, 119, 137);
-    pdf.setLineWidth(0.3);
-    pdf.rect(x, y - 6, 16, 8, 'FD');
-    pdf.setFillColor(bar[0], bar[1], bar[2]);
-    pdf.rect(x, y - 6, 3, 8, 'F');
-  }
-
   /* A portrait day column split three ways is narrow, and a name cut to
    * "Natha..." is no name at all: the text steps down through `sizes` until it
    * fits, and is only cut short at the smallest. Leaves the font at that size.
@@ -82,52 +75,42 @@
     return truncate(pdf, text, width);
   }
 
-  /* ---- the blocks along the bottom ----
-   * The download is the admins' copy, so where the hall handout has a QR code
-   * this has the floating embedded tutors: who is sitting in which class,
-   * when. It takes the QR code's place on the left, then library tutoring and
-   * the open lab in the hall handout's own blocks -- a navy heading with the
-   * room on its right, the classes a walk-in block is for, and a row per
-   * entry.
-   *
-   * The embedded tutors are read by person, so their rows lead with the name
-   * and run in name order; the other two read by day, as on the hall
-   * handout.
+  /* ---- the blocks along the foot ----
+   * Library tutoring and the open lab on both versions, the floating embedded
+   * tutors first on the admin version, all in the hall version's style -- a
+   * navy heading with the room on its right, the classes a walk-in block is
+   * for, and a row per entry. The embedded tutors are read by person, so
+   * their rows lead with the name (U.footerBlocks).
    */
-  var BLOCK_KINDS = ['embedded', 'library', 'lab'];
   var BLOCK_SHARE = { embedded: 1.35, library: 1, lab: 1 };
   var BLOCK_HEAD = 15, BLOCK_ONLY = 12, BLOCK_ROW = 11;
 
-  function bottomBlocks(state, labels) {
-    var runs = U.offRoomRuns(state.assignments, labels, state.tutors);
-    return BLOCK_KINDS.map(function (key) {
-      var run = runs.filter(function (r) { return r.kind === key; })[0];
-      if (!run) return null;
-      var byName = key === 'embedded';
-      var entries = run.entries.slice();
-      if (byName) {
-        entries.sort(function (a, b) {
-          return U.compareNames(labels[a.tutorId] || '', labels[b.tutorId] || '') ||
-            a.days[0] - b.days[0] || a.startSlot - b.startSlot;
-        });
-      }
-      var rows = [];
-      entries.forEach(function (e, i) {
-        if (!TS.store.getTutor(e.tutorId)) return;
-        var repeat = i > 0 && entries[i - 1].tutorId === e.tutorId;
-        var name = repeat ? '' : labels[e.tutorId];
-        var days = U.daysLabel(e.days);
-        var time = U.formatRange(e.startSlot, e.endSlot);
-        rows.push(byName
-          ? [name, days, time, e.room]
-          : [days, time, name + (e.room ? ' (' + e.room + ')' : '')]);
-      });
+  function footBlocks(state, labels, kinds) {
+    return U.footerBlocks(state.assignments, labels, state.tutors, kinds).map(function (b) {
       return {
-        title: run.title, room: run.room, only: run.only, rows: rows,
-        bold: byName ? [0] : [0, 2], muted: byName ? [3] : [],
-        share: BLOCK_SHARE[key]
+        title: b.title, room: b.room, only: b.only,
+        rows: b.rows.map(function (r) {
+          return b.byName
+            ? [r.name, r.days, r.time, r.room]
+            : [r.days, r.time, r.name + (r.room ? ' (' + r.room + ')' : '')];
+        }),
+        bold: b.byName ? [0] : [0, 2], muted: b.byName ? [3] : [],
+        share: BLOCK_SHARE[b.kind] || 1
       };
-    }).filter(function (b) { return b && b.rows.length; });
+    });
+  }
+
+  function drawQr(pdf, text, x, y, size) {
+    var code = TS.qr.runs(text);
+    if (!code) return;
+    var cell = size / code.count;
+
+    pdf.setFillColor(255, 255, 255);
+    pdf.rect(x - 3, y - 3, size + 6, size + 6, 'F');
+    pdf.setFillColor(0, 0, 0);
+    code.runs.forEach(function (run) {
+      pdf.rect(x + run[1] * cell, y + run[0] * cell, run[2] * cell, cell, 'F');
+    });
   }
 
   function blockHeight(block) {
@@ -275,10 +258,9 @@
   }
 
   /* ---- what a calendar page draws inside its grid ----
-   * The page around them is the same either way: header, notes, the band of
-   * shifts held elsewhere, the QR block. Only the blocks and the legend that
-   * decodes them tell the two calendars apart, so only those two are written
-   * twice.
+   * The page around them is nearly the same either way: header, notes, the
+   * blocks along the foot. Only the grid's blocks tell the two calendars
+   * apart, so only those are written twice.
    */
 
   function drawTutorBlocks(pdf, state, labels, g) {
@@ -468,64 +450,6 @@
     return truncate(pdf, U.formatMinutes(U.slotStartMinutes(startSlot), { omitSuffix: true }), width);
   }
 
-  /* A legend runs the width of the page, in as many columns as fit and only
-   * as deep as the roster needs -- up to four rows, then deeper and, failing
-   * that, narrower, so the legend stays on the page. */
-  function legendGrid(count, width, minW, maxW) {
-    var fit = Math.max(1, Math.floor(width / minW));
-    var rows = count <= fit * 4 ? Math.max(1, Math.ceil(count / fit)) : Math.min(6, Math.ceil(count / fit));
-    var cols = Math.max(1, Math.ceil(count / rows));
-    return { rows: rows, colW: Math.min(maxW, width / cols) };
-  }
-
-  function drawTutorLegend(pdf, state, labels, legendX, legendY, width) {
-    var grid = legendGrid(state.tutors.length, width, 140, 170);
-    pdf.setFontSize(8);
-    // The class list starts just past the longest name, so it has the rest of
-    // the column.
-    pdf.setFont('helvetica', 'bold');
-    var nameW = Math.min(66, Math.max.apply(null, state.tutors.map(function (t) {
-      return pdf.getTextWidth(labels[t.id]);
-    }).concat([0])));
-    state.tutors.forEach(function (t, i) {
-      var lx = legendX + Math.floor(i / grid.rows) * grid.colW;
-      var ly = legendY + (i % grid.rows) * 13;
-      drawSwatch(pdf, U.blockColors(t.colorIndex, false), lx, ly);
-
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(INK[0], INK[1], INK[2]);
-      pdf.text(truncate(pdf, labels[t.id], nameW), lx + 20, ly);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-      pdf.text(
-        truncate(pdf, U.maskToShort(U.subjectMask(t.subjects)).join(' · ') || '—', grid.colW - 30 - nameW),
-        lx + 28 + nameW, ly
-      );
-    });
-  }
-
-  /* Wider columns than the tutor legend, because a class name is longer than a
-   * first name and there are only ever a handful of them.
-   */
-  function drawClassLegend(pdf, state, legendX, legendY, width) {
-    var lanes = U.coverageLanes();
-    var totals = U.coverageLaneHours(U.coverageRuns(state.assignments, state.tutors));
-    var grid = legendGrid(lanes.length, width, 175, 175);
-    pdf.setFontSize(8);
-    lanes.forEach(function (lane, i) {
-      var lx = legendX + Math.floor(i / grid.rows) * grid.colW;
-      var ly = legendY + (i % grid.rows) * 13;
-      drawSwatch(pdf, U.laneColors(lane, false), lx, ly);
-
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(INK[0], INK[1], INK[2]);
-      pdf.text(truncate(pdf, U.laneLabel(lane), grid.colW - 84), lx + 20, ly);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-      pdf.text(truncate(pdf, U.hoursLabel(totals[i]) + ' a week', 56), lx + grid.colW - 58, ly);
-    });
-  }
-
   function drawListing(pdf, state, labels, pageW, pageH, margin) {
     var y2 = margin + 14;
     pdf.setFont('times', 'bold');
@@ -602,24 +526,25 @@
     var pageH = pdf.internal.pageSize.getHeight();
     var margin = 28;
 
-    /* For each 7 weeks printed -- both by default -- the tutor calendar, then
-     * the same handout with the week read by class. Printed double sided,
-     * those are the two faces of one sheet. With the listing turned on, it
-     * follows each calendar instead, so each sheet then carries a calendar on
-     * one face and the listing on the other.
+    /* For each 7 weeks printed -- both by default -- the hall version (the
+     * week by class), then the admin version (the week by tutor): the hall
+     * version is the one printed most, so it comes first. Printed double
+     * sided, those are the two faces of one sheet. With the listing turned
+     * on, it follows each calendar instead, so each sheet then carries a
+     * calendar on one face and the listing on the other.
      */
     var listing = !!s.includeListing;
     var first = true;
     var page = function () { if (!first) pdf.addPage(); first = false; };
     TS.store.printViews().forEach(function (view) {
       page();
-      drawCalendarPage(pdf, view, labels, pageW, pageH, margin, false);
+      drawCalendarPage(pdf, view, labels, pageW, pageH, margin, true);
       if (listing) {
         page();
         drawListing(pdf, view, labels, pageW, pageH, margin);
       }
       page();
-      drawCalendarPage(pdf, view, labels, pageW, pageH, margin, true);
+      drawCalendarPage(pdf, view, labels, pageW, pageH, margin, false);
       if (listing) {
         page();
         drawListing(pdf, view, labels, pageW, pageH, margin);
@@ -629,10 +554,10 @@
     return { pdf: pdf, filename: TS.store.printName() + '.pdf' };
   }
 
-  /* A whole handout page: the header, the week, the band of shifts held
-   * elsewhere, the notes and the QR block. `byClass` swaps the grid for the
-   * class-centric reading of the same week and the legend along with it, and
-   * changes nothing else -- the two pages are meant to be twins.
+  /* A whole handout page: the header, the week, the notes and the blocks
+   * along the foot. `byClass` is the hall version -- the week by class, with
+   * the QR code leading its foot; otherwise it is the admin version -- the
+   * week by tutor, with the floating embedded tutors where the QR code was.
    */
   function drawCalendarPage(pdf, state, labels, pageW, pageH, margin, byClass) {
     var s = state.settings;
@@ -727,17 +652,16 @@
     // still clears the last line's descenders.
     var noteH = noteLines.length ? 25 + noteLines.length * 10.5 : 0;
 
-    // The blocks along the bottom and the legend under them are measured
-    // before the grid is laid out too.
-    var blocks = bottomBlocks(state, labels);
+    // The blocks along the foot are measured before the grid is laid out too;
+    // on the hall version the QR code stands at their left, as tall as they
+    // are or taller.
+    var hall = byClass;
+    var QR = 72;
+    var blocks = footBlocks(state, labels, hall ? HALL_BLOCKS : ADMIN_BLOCKS);
     var blocksH = blocks.reduce(function (most, b) { return Math.max(most, blockHeight(b)); }, 0);
-    var legendW = pageW - margin * 2;
-    var legendRows = byClass
-      ? legendGrid(U.coverageLanes().length, legendW, 175, 175).rows
-      : legendGrid(state.tutors.length, legendW, 140, 170).rows;
-    var legendH = legendRows * 13 + 4;
+    var footRowH = Math.max(blocksH, hall ? QR + 4 : 0);
 
-    var footH = 10 + noteH + (blocksH ? blocksH + 10 : 0) + 8 + legendH;
+    var footH = 12 + noteH + footRowH;
     var gridBottom = pageH - margin - footH;
     var headH = 15;
     var gutterW = 44;
@@ -754,8 +678,7 @@
     drawGridFrame(pdf, geom);
 
     /* ---- blocks ----
-     * The one place the two calendars differ, along with the legend that
-     * decodes them. Everything else on the page is the same either way.
+     * The one place the two calendars differ inside the grid.
      */
     if (byClass) drawClassBlocks(pdf, state, labels, geom);
     else drawTutorBlocks(pdf, state, labels, geom);
@@ -769,27 +692,44 @@
       drawNotesBox(pdf, margin, gridEnd + 10, pageW - margin * 2, noteH - 8, noteLines, 9, 10.5);
     }
 
-    /* ---- embedded tutors, library tutoring, open lab ---- */
-    var blocksY = gridEnd + 10 + noteH;
+    /* ---- the foot: QR code (hall) or embedded tutors (admin), then library
+     * tutoring and the open lab ---- */
+    var footY = gridEnd + 12 + noteH;
+    var bx = margin;
+    if (hall) {
+      // The link itself is left off the page: it is long and carries an id
+      // nobody would type, so the code is what gets used.
+      drawQr(pdf, s.qrUrl, margin + 3, footY + 2, QR);
+      var qrTextW = pageW > pageH ? 135 : 100;
+      var qrX = margin + QR + 14;
+      var qrY = footY + 20;
+      pdf.setTextColor(0, 40, 85);
+      pdf.setFont('times', 'bold');
+      pdf.setFontSize(pageW > pageH ? 12.5 : 11);
+      pdf.splitTextToSize(s.qrHeading || '', qrTextW).forEach(function (line) {
+        pdf.text(line, qrX, qrY);
+        qrY += 13;
+      });
+      pdf.setTextColor(INK[0], INK[1], INK[2]);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(pageW > pageH ? 10 : 9);
+      qrY += 2;
+      pdf.splitTextToSize(s.qrCaption || '', qrTextW).slice(0, 4).forEach(function (line) {
+        pdf.text(line, qrX, qrY);
+        qrY += 11.5;
+      });
+      bx = qrX + qrTextW + 12;
+    }
     if (blocks.length) {
       var gap = 10;
       var shares = blocks.reduce(function (sum, b) { return sum + b.share; }, 0);
-      var unit = (pageW - margin * 2 - gap * (blocks.length - 1)) / shares;
-      var bx = margin;
+      var unit = (pageW - margin - bx - gap * (blocks.length - 1)) / shares;
       blocks.forEach(function (b) {
         var bw = unit * b.share;
-        drawBottomBlock(pdf, b, bx, blocksY, bw, blocksH, pageW > pageH ? 8.5 : 7.5);
+        drawBottomBlock(pdf, b, bx, footY, bw, blocksH, pageW > pageH ? 8.5 : 7.5);
         bx += bw + gap;
       });
     }
-
-    /* ---- legend ---- */
-    var legendTop = blocksY + (blocksH ? blocksH + 10 : 0);
-    pdf.setDrawColor(RULE[0], RULE[1], RULE[2]);
-    pdf.setLineWidth(0.6);
-    pdf.line(margin, legendTop, pageW - margin, legendTop);
-    if (byClass) drawClassLegend(pdf, state, margin, legendTop + 14, legendW);
-    else drawTutorLegend(pdf, state, labels, margin, legendTop + 14, legendW);
   }
 
   function download(state) {
