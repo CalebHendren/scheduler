@@ -6,6 +6,19 @@
   var esc = function (s) { return TS.tutors.esc(s); };
 
   /*
+   * THE HALL VERSION -- what Print / Save as PDF prints, and what is posted in
+   * the halls for students. It is written for someone walking past: no
+   * legend, no floating embedded tutors (they only help the class they sit
+   * in), and along the bottom the QR code to book an appointment beside the
+   * Library Boneyard Tutoring and Open Lab blocks.
+   *
+   * Its twin is THE ADMIN VERSION in pdf.js (Download PDF), for the people
+   * who run the center: the same calendars, with the embedded tutors and a
+   * legend in place of the QR code. A change to one is usually wanted in the
+   * other; the two differ only where the comments say so.
+   */
+
+  /*
    * Lane grids per day. The screen view can position blocks freely, but a
    * table needs a fixed number of columns per day and a rowspan per block,
    * which is exactly what makes the exported PDF tagged and navigable.

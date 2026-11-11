@@ -957,6 +957,7 @@
       notice(kept.length ? 'Cleared. ' + kept.length + ' locked shift(s) kept.' : 'Schedule cleared.', 'info');
     });
 
+    // The hall version: the handout posted for students (printview.js).
     $('btn-print').addEventListener('click', function () { root.print(); });
 
     // Save as PDF offers the page title as the file name, so while printing
@@ -971,6 +972,8 @@
       screenTitle = null;
     });
 
+    // The admin version: the same calendars with the embedded tutors and a
+    // legend, for the people who run the center (pdf.js).
     $('btn-pdf').addEventListener('click', function () {
       try {
         TS.pdf.download(TS.store.state);

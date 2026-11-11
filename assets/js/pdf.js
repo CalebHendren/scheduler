@@ -3,6 +3,18 @@
   var TS = (root.TS = root.TS || {});
   var U = TS.util;
 
+  /*
+   * THE ADMIN VERSION -- what Download PDF saves, for the people who run the
+   * center rather than for the halls. The same calendars as the hall version,
+   * with the floating embedded tutors in a block of their own (by tutor name)
+   * where the hall version has its QR code, the Library Boneyard Tutoring and
+   * Open Lab blocks beside it, and the tutor or class legend under them.
+   *
+   * Its twin is THE HALL VERSION in printview.js (Print / Save as PDF). A
+   * change to one is usually wanted in the other; the two differ only where
+   * the comments say so.
+   */
+
   var NAVY = [16, 48, 95];
   var ORANGE = [254, 80, 0];
   var INK = [20, 24, 31];
@@ -24,19 +36,6 @@
     var s = text;
     while (s.length > 1 && pdf.getTextWidth(s + '…') > maxWidth) s = s.slice(0, -1);
     return s + '…';
-  }
-
-  function drawQr(pdf, text, x, y, size) {
-    var code = TS.qr.runs(text);
-    if (!code) return;
-    var cell = size / code.count;
-
-    pdf.setFillColor(255, 255, 255);
-    pdf.rect(x - 3, y - 3, size + 6, size + 6, 'F');
-    pdf.setFillColor(0, 0, 0);
-    code.runs.forEach(function (run) {
-      pdf.rect(x + run[1] * cell, y + run[0] * cell, run[2] * cell, cell, 'F');
-    });
   }
 
   /* A block's box, in either calendar: the tinted fill, a thin border, and
@@ -83,28 +82,110 @@
     return truncate(pdf, text, width);
   }
 
-  /* Each kind held somewhere other than the center, as one labelled run of
-   * text. The same footnote the old handouts carried, and cheap enough on a
-   * crowded page: "Floating Embedded Tutors: Bailey Tue & Thu 12:30-2:00 PM
-   * (OMN 286)". A room the whole run shares is said once, in the label, and a
-   * tutor's second entry in a row leaves the name off (U.offRoomRuns).
+  /* ---- the blocks along the bottom ----
+   * The download is the admins' copy, so where the hall handout has a QR code
+   * this has the floating embedded tutors: who is sitting in which class,
+   * when. It takes the QR code's place on the left, then library tutoring and
+   * the open lab in the hall handout's own blocks -- a navy heading with the
+   * room on its right, the classes a walk-in block is for, and a row per
+   * entry.
+   *
+   * The embedded tutors are read by person, so their rows lead with the name
+   * and run in name order; the other two read by day, as on the hall
+   * handout.
    */
-  function offRoomRuns(state, labels) {
-    return U.offRoomRuns(state.assignments, labels, state.tutors).map(function (run) {
-      var text = '';
-      run.entries.forEach(function (e) {
-        var tutor = TS.store.getTutor(e.tutorId);
-        if (!tutor) return;
-        var entry = U.daysLabel(e.days) + ' ' + U.formatRange(e.startSlot, e.endSlot) +
-          (e.room ? ' (' + e.room + ')' : '');
-        if (!text) text = labels[tutor.id] + ' ' + entry;
-        else text += e.sameTutor ? ', ' + entry : '  ·  ' + labels[tutor.id] + ' ' + entry;
+  var BLOCK_KINDS = ['embedded', 'library', 'lab'];
+  var BLOCK_SHARE = { embedded: 1.35, library: 1, lab: 1 };
+  var BLOCK_HEAD = 15, BLOCK_ONLY = 12, BLOCK_ROW = 11;
+
+  function bottomBlocks(state, labels) {
+    var runs = U.offRoomRuns(state.assignments, labels, state.tutors);
+    return BLOCK_KINDS.map(function (key) {
+      var run = runs.filter(function (r) { return r.kind === key; })[0];
+      if (!run) return null;
+      var byName = key === 'embedded';
+      var entries = run.entries.slice();
+      if (byName) {
+        entries.sort(function (a, b) {
+          return U.compareNames(labels[a.tutorId] || '', labels[b.tutorId] || '') ||
+            a.days[0] - b.days[0] || a.startSlot - b.startSlot;
+        });
+      }
+      var rows = [];
+      entries.forEach(function (e, i) {
+        if (!TS.store.getTutor(e.tutorId)) return;
+        var repeat = i > 0 && entries[i - 1].tutorId === e.tutorId;
+        var name = repeat ? '' : labels[e.tutorId];
+        var days = U.daysLabel(e.days);
+        var time = U.formatRange(e.startSlot, e.endSlot);
+        rows.push(byName
+          ? [name, days, time, e.room]
+          : [days, time, name + (e.room ? ' (' + e.room + ')' : '')]);
       });
-      if (text && run.only) text += '  —  ' + run.only;
-      return text
-        ? { label: run.heading + (run.room ? ' (' + run.room + ')' : '') + ':', text: text }
-        : null;
-    }).filter(function (run) { return !!run; });
+      return {
+        title: run.title, room: run.room, only: run.only, rows: rows,
+        bold: byName ? [0] : [0, 2], muted: byName ? [3] : [],
+        share: BLOCK_SHARE[key]
+      };
+    }).filter(function (b) { return b && b.rows.length; });
+  }
+
+  function blockHeight(block) {
+    return BLOCK_HEAD + (block.only ? BLOCK_ONLY : 0) + 5 + block.rows.length * BLOCK_ROW;
+  }
+
+  function drawBottomBlock(pdf, block, x, y, w, h, pt) {
+    pdf.setFillColor(255, 255, 255);
+    pdf.setDrawColor(NAVY[0], NAVY[1], NAVY[2]);
+    pdf.setLineWidth(1);
+    pdf.rect(x, y, w, h, 'FD');
+    pdf.setFillColor(NAVY[0], NAVY[1], NAVY[2]);
+    pdf.rect(x, y, w, BLOCK_HEAD, 'F');
+
+    var roomW = 0;
+    if (block.room) {
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(255, 216, 194);
+      roomW = pdf.getTextWidth(block.room) + 10;
+      pdf.text(block.room, x + w - 6, y + 10.5, { align: 'right' });
+    }
+    pdf.setFont('times', 'bold');
+    pdf.setFontSize(10.5);
+    pdf.setTextColor(255, 255, 255);
+    pdf.text(truncate(pdf, block.title, w - 12 - roomW), x + 6, y + 11);
+
+    var rowY = y + BLOCK_HEAD;
+    if (block.only) {
+      pdf.setFillColor(255, 241, 232);
+      pdf.rect(x + 0.5, rowY, w - 1, BLOCK_ONLY, 'F');
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(8);
+      pdf.setTextColor(138, 46, 0);
+      pdf.text(truncate(pdf, block.only, w - 12), x + 6, rowY + 8.5);
+      rowY += BLOCK_ONLY;
+    }
+
+    // Each column as wide as its widest cell; the last one gets what is left.
+    pdf.setFontSize(pt);
+    var cols = block.rows[0].length;
+    var widths = [];
+    for (var c = 0; c < cols - 1; c++) {
+      pdf.setFont('helvetica', block.bold.indexOf(c) !== -1 ? 'bold' : 'normal');
+      widths.push(Math.max.apply(null, block.rows.map(function (r) { return pdf.getTextWidth(r[c]); })) + 7);
+    }
+    block.rows.forEach(function (row, i) {
+      var cx = x + 6;
+      var cy = rowY + 4 + (i + 1) * BLOCK_ROW - 2.5;
+      row.forEach(function (cell, c) {
+        var muted = block.muted.indexOf(c) !== -1;
+        pdf.setFont('helvetica', block.bold.indexOf(c) !== -1 ? 'bold' : 'normal');
+        pdf.setTextColor.apply(pdf, muted ? MUTED : INK);
+        var room = c < cols - 1 ? widths[c] : x + w - 6 - cx;
+        pdf.text(truncate(pdf, cell, Math.max(8, room - (c < cols - 1 ? 7 : 0))), cx, cy);
+        cx += room;
+      });
+    });
   }
 
   /* The important notes box: a tinted panel with the orange bar down its left
@@ -387,13 +468,12 @@
     return truncate(pdf, U.formatMinutes(U.slotStartMinutes(startSlot), { omitSuffix: true }), width);
   }
 
-  /* A legend reads down columns of four, as many columns as the roster needs.
-   * Where the space beside the QR block is too narrow for that -- a portrait
-   * page -- the columns run deeper and, failing that, narrower, so the legend
-   * stays on the page. */
+  /* A legend runs the width of the page, in as many columns as fit and only
+   * as deep as the roster needs -- up to four rows, then deeper and, failing
+   * that, narrower, so the legend stays on the page. */
   function legendGrid(count, width, minW, maxW) {
     var fit = Math.max(1, Math.floor(width / minW));
-    var rows = count <= fit * 4 ? 4 : Math.min(6, Math.ceil(count / fit));
+    var rows = count <= fit * 4 ? Math.max(1, Math.ceil(count / fit)) : Math.min(6, Math.ceil(count / fit));
     var cols = Math.max(1, Math.ceil(count / rows));
     return { rows: rows, colW: Math.min(maxW, width / cols) };
   }
@@ -647,25 +727,17 @@
     // still clears the last line's descenders.
     var noteH = noteLines.length ? 25 + noteLines.length * 10.5 : 0;
 
-    // The label column is as wide as the widest kind name, so the entries of
-    // both runs line up whatever the kinds are called.
-    var offRuns = offRoomRuns(state, labels);
-    pdf.setFont('times', 'bold');
-    pdf.setFontSize(10);
-    var offLabelW = 0;
-    offRuns.forEach(function (run) {
-      offLabelW = Math.max(offLabelW, pdf.getTextWidth(run.label) + 8);
-    });
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(9);
-    var offRowCount = 0;
-    offRuns.forEach(function (run) {
-      run.lines = pdf.splitTextToSize(run.text, pageW - margin * 2 - offLabelW);
-      offRowCount += run.lines.length;
-    });
-    var offH = offRowCount ? 14 + offRowCount * 10.5 : 0;
+    // The blocks along the bottom and the legend under them are measured
+    // before the grid is laid out too.
+    var blocks = bottomBlocks(state, labels);
+    var blocksH = blocks.reduce(function (most, b) { return Math.max(most, blockHeight(b)); }, 0);
+    var legendW = pageW - margin * 2;
+    var legendRows = byClass
+      ? legendGrid(U.coverageLanes().length, legendW, 175, 175).rows
+      : legendGrid(state.tutors.length, legendW, 140, 170).rows;
+    var legendH = legendRows * 13 + 4;
 
-    var footH = 92 + noteH + offH;
+    var footH = 10 + noteH + (blocksH ? blocksH + 10 : 0) + 8 + legendH;
     var gridBottom = pageH - margin - footH;
     var headH = 15;
     var gutterW = 44;
@@ -692,61 +764,32 @@
     var gridEnd = bodyTop + slotCount * rowH;
     drawDayDividers(pdf, geom);
 
-    /* ---- floating embedded tutors & open labs ---- */
-    if (offRowCount) {
-      var offY = gridEnd + 17;
-      offRuns.forEach(function (run) {
-        pdf.setFont('times', 'bold');
-        pdf.setFontSize(10);
-        pdf.setTextColor(0, 40, 85);
-        pdf.text(run.label, margin, offY);
+    /* ---- important notes, when the header had no room for them ---- */
+    if (noteLines.length) {
+      drawNotesBox(pdf, margin, gridEnd + 10, pageW - margin * 2, noteH - 8, noteLines, 9, 10.5);
+    }
 
-        pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(9);
-        pdf.setTextColor(INK[0], INK[1], INK[2]);
-        run.lines.forEach(function (line, i) {
-          pdf.text(line, margin + offLabelW, offY + i * 10.5);
-        });
-        offY += run.lines.length * 10.5;
+    /* ---- embedded tutors, library tutoring, open lab ---- */
+    var blocksY = gridEnd + 10 + noteH;
+    if (blocks.length) {
+      var gap = 10;
+      var shares = blocks.reduce(function (sum, b) { return sum + b.share; }, 0);
+      var unit = (pageW - margin * 2 - gap * (blocks.length - 1)) / shares;
+      var bx = margin;
+      blocks.forEach(function (b) {
+        var bw = unit * b.share;
+        drawBottomBlock(pdf, b, bx, blocksY, bw, blocksH, pageW > pageH ? 8.5 : 7.5);
+        bx += bw + gap;
       });
     }
 
-    /* ---- important notes, when the header had no room for them ---- */
-    if (noteLines.length) {
-      drawNotesBox(pdf, margin, gridEnd + 10 + offH, pageW - margin * 2, noteH - 8, noteLines, 9, 10.5);
-    }
-
-    /* ---- footer: QR, what it is for, legend ---- */
-    var footY = gridBottom + 12 + noteH + offH;
+    /* ---- legend ---- */
+    var legendTop = blocksY + (blocksH ? blocksH + 10 : 0);
     pdf.setDrawColor(RULE[0], RULE[1], RULE[2]);
     pdf.setLineWidth(0.6);
-    pdf.line(margin, footY - 8, pageW - margin, footY - 8);
-
-    drawQr(pdf, s.qrUrl, margin + 3, footY, 58);
-
-    // The link itself is left off the page: it is long and carries an id
-    // nobody would type, so the code is what gets used.
-    // Narrower beside the QR on a portrait page, to leave the legend its room.
-    var qrTextW = pageW > pageH ? 170 : 140;
-    var qrY = footY + 10;
-    pdf.setTextColor(INK[0], INK[1], INK[2]);
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(9.5);
-    pdf.splitTextToSize(s.qrHeading || '', qrTextW).forEach(function (line) {
-      pdf.text(line, margin + 72, qrY);
-      qrY += 12;
-    });
-    pdf.setFont('helvetica', 'normal');
-    pdf.splitTextToSize(s.qrCaption || '', qrTextW).slice(0, 4).forEach(function (line) {
-      pdf.text(line, margin + 72, qrY);
-      qrY += 12;
-    });
-
-    var legendX = margin + 90 + qrTextW;
-    var legendY = footY + 6;
-    var legendW = pageW - margin - legendX;
-    if (byClass) drawClassLegend(pdf, state, legendX, legendY, legendW);
-    else drawTutorLegend(pdf, state, labels, legendX, legendY, legendW);
+    pdf.line(margin, legendTop, pageW - margin, legendTop);
+    if (byClass) drawClassLegend(pdf, state, margin, legendTop + 14, legendW);
+    else drawTutorLegend(pdf, state, labels, margin, legendTop + 14, legendW);
   }
 
   function download(state) {

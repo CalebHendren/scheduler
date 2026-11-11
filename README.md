@@ -158,11 +158,11 @@ says which classes it is for when that is fewer than all of them — *Anatomy & 
 worked out from the classes its tutors are checked for. Floating embedded tutors are left off the
 hall handout: they help only the class they sit in, and those students already know.
 
-**Download PDF** keeps all three kinds as lines under the grid — *Floating Embedded Tutors:
-Bailey Tue & Thu 12:30–2:00 PM (OMN 286)* — the same footnote the old paper schedules carried,
-library tutoring first. A room every entry of a kind shares is said once — in the name for the
-library (*Library Boneyard Tutoring:*), beside the heading for the others — a
-tutor listed twice in a row is named once, and the same *only* note ends the line. The page-2 listing keeps them in with everything
+**Download PDF** is the admin version, for the people who run the center. It has no QR code;
+in its place along the bottom is a **Floating Embedded Tutors** block in the same style, led by
+the tutor's name and in name order — *Ellie Mon 3:00–8:30 PM OMN 296*, then her Thursday under
+it — followed by the same Library Boneyard Tutoring and Open Lab blocks. The tutor (or class)
+legend runs under them. The page-2 listing keeps them in with everything
 else, so it stays a complete record.
 
 What they change:
@@ -325,15 +325,15 @@ it cannot read is reported per row instead of being silently dropped, and times 
 
 Two buttons, for two different needs:
 
-- **Print / Save as PDF** — the one to use for anything you hand out or post. It prints from a
+- **Print / Save as PDF** — the hall version: the one to use for anything you hand out or post. It prints from a
   real HTML table with proper row and column headers, so the PDF Chrome and Edge produce has
   selectable text, keeps its table structure, and carries a document language. Each 7 weeks is
   two pages: the calendar, the notes, the QR code and the library and open lab blocks, then
   **Coverage by class** —
   printed double sided, one sheet with a calendar on each face.
-- **Download PDF** — one click, no print dialog, drawn directly with jsPDF. The same two
-  calendars in real text (nothing is a screenshot), with a legend and every kind of shift held
-  elsewhere listed under the grid. jsPDF does not emit a tagged structure tree, so it is the
+- **Download PDF** — the admin version: one click, no print dialog, drawn directly with jsPDF.
+  The same two calendars in real text (nothing is a screenshot), with the floating embedded
+  tutors in a block where the hall version has its QR code, and a legend. jsPDF does not emit a tagged structure tree, so it is the
   convenience option rather than the accessible one.
 
 The **Layout** choice beside them turns the pages **Landscape** (the default) or **Portrait**.

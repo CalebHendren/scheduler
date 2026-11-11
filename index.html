@@ -36,6 +36,7 @@
     </div>
 
     <div class="toolbar__group" role="group" aria-label="Print the handout">
+      <!-- The hall version (printview.js), then the admin version (pdf.js). -->
       <button type="button" class="btn" id="btn-print">Print / Save as PDF</button>
       <button type="button" class="btn" id="btn-pdf">Download PDF</button>
       <!-- Outside the settings panel, which is re-rendered from state: these sit
@@ -184,8 +185,8 @@
   </main>
 </div>
 
-<!-- Rendered from the same state, shown only on paper: a real table so the
-     PDF comes out tagged and navigable. -->
+<!-- The hall version. Rendered from the same state, shown only on paper: a
+     real table so the PDF comes out tagged and navigable. -->
 <div class="print-only" id="print-view"></div>
 
 <div id="dialog-root"></div>
