@@ -1031,7 +1031,10 @@
     ], { car: 'Caroline', ell: 'Ellie', bai: 'Bailey' });
     r.eq(runs.map(function (run) { return run.kind; }).join(','), 'library,embedded,lab',
       'library tutoring is listed first, nearest the grid');
-    r.eq(runs[0].room, 'Boneyard', 'a room every entry shares goes beside the heading');
+    r.eq(runs[0].title, 'Library Boneyard Tutoring', 'the library room is part of its name');
+    r.eq(runs[0].room, '', 'and is not said again beside it');
+    r.eq(runs[2].heading, 'Open Labs', 'a lab keeps its own name');
+    r.eq(runs[2].room, 'OMN 286', 'with a room every entry shares beside the heading');
     r.eq(runs[0].entries.map(function (e) { return e.room; }).join(''), '',
       'and not after each entry');
     r.eq(runs[0].entries.length, 2, 'Tuesday and Thursday at the same time are one entry');
@@ -1044,6 +1047,10 @@
     ], { car: 'Caroline' }, [{ id: 'car', subjects: { ap1: true, ap2: true } }]);
     r.eq(only[0].only, 'Anatomy & Physiology only',
       'a lab run by A&P tutors says it is for A&P only, the pair read as one');
+    var embeddedOnly = U.offRoomRuns([
+      { id: 'c2', tutorId: 'bai', day: 1, startSlot: 8, endSlot: 14, kind: 'embedded', room: 'OMN 286' }
+    ], { bai: 'Bailey' }, [{ id: 'bai', subjects: { bio: true, ap1: true } }]);
+    r.eq(embeddedOnly[0].only, '', 'an embedded tutor has no classes note: they help the class they sit in');
     r.eq(U.classesOnlyLabel(U.subjectMask({ bio: true, micro: true, ap1: true, ap2: true })), '',
       'every class is not a restriction worth printing');
     r.eq(U.classesOnlyLabel(U.subjectMask({ bio: true, ap1: true })),

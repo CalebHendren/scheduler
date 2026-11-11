@@ -151,15 +151,17 @@ start time, then by name.
 
 On the **Print / Save as PDF** handout — the one that goes up in the halls — library tutoring and
 the open lab are the other places a student can walk in for help, so each gets a block of its own
-along the bottom, beside the QR code: **Library Tutoring** on the left, **Open Lab** on the
-right. Each block names its room in its heading, lists its days and times with the tutor, and
+along the bottom, beside the QR code: library tutoring on the left, the open lab on the
+right — *Library Boneyard Tutoring*, and *Open Lab* with its room (*OMN 286*) on the right of
+its heading. Each block lists its days and times with the tutor, and
 says which classes it is for when that is fewer than all of them — *Anatomy & Physiology only*,
 worked out from the classes its tutors are checked for. Floating embedded tutors are left off the
 hall handout: they help only the class they sit in, and those students already know.
 
 **Download PDF** keeps all three kinds as lines under the grid — *Floating Embedded Tutors:
 Bailey Tue & Thu 12:30–2:00 PM (OMN 286)* — the same footnote the old paper schedules carried,
-library tutoring first. A room every entry of a kind shares is said once, beside the heading, a
+library tutoring first. A room every entry of a kind shares is said once — in the name for the
+library (*Library Boneyard Tutoring:*), beside the heading for the others — a
 tutor listed twice in a row is named once, and the same *only* note ends the line. The page-2 listing keeps them in with everything
 else, so it stays a complete record.
 

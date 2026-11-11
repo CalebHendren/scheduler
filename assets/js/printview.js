@@ -366,7 +366,6 @@
 
   function buildSpots(state, labels) {
     return spotRuns(state, labels).map(function (run) {
-      var kind = U.shiftKind(run.kind);
       var rows = run.entries.map(function (e) {
         var tutor = TS.store.getTutor(e.tutorId);
         if (!tutor) return '';
@@ -376,7 +375,7 @@
             (e.room ? ' <span class="pv-spot__where">(' + esc(e.room) + ')</span>' : '') + '</td></tr>';
       }).join('');
       return '<section class="pv-spot pv-spot--' + run.kind + '">' +
-        '<h2><span>' + esc(kind.title || kind.plural) + '</span>' +
+        '<h2><span>' + esc(run.title) + '</span>' +
           (run.room ? '<span class="pv-spot__room">' + esc(run.room) + '</span>' : '') + '</h2>' +
         (run.only ? '<p class="pv-spot__only">' + esc(run.only) + '</p>' : '') +
         '<table class="pv-spot__list"><tbody>' + rows + '</tbody></table>' +

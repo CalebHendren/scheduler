@@ -86,11 +86,14 @@
     // Drop-in tutoring like the center's, at a second spot on campus -- the
     // library's "Boneyard" -- so it is listed first, nearest the grid.
     { key: 'library', label: 'Library tutoring', short: 'Library', plural: 'Library Tutoring',
-      title: 'Library Tutoring', placeholder: 'Boneyard' },
+      title: 'Library Tutoring', placeholder: 'Boneyard',
+      // A room every entry shares is part of the name: "Library Boneyard
+      // Tutoring", not "Library Tutoring (Boneyard)".
+      roomTitle: 'Library {room} Tutoring', saysClasses: true },
     { key: 'embedded', label: 'Floating embedded tutor', short: 'Embedded',
       plural: 'Floating Embedded Tutors', placeholder: 'OMN 286' },
     { key: 'lab', label: 'Open lab', short: 'Open lab', plural: 'Open Labs', title: 'Open Lab',
-      placeholder: 'OMN 286' }
+      placeholder: 'OMN 286', saysClasses: true }
   ];
 
   function shiftKind(key) {
@@ -162,8 +165,9 @@
    * footnote band look cluttered:
    *
    *   - where every entry in a run is in the same room, the room is said once,
-   *     beside the heading ("Library Tutoring (Boneyard):") and not after
-   *     each entry;
+   *     beside the heading ("Open Labs (OMN 286):") and not after each entry
+   *     -- or, for a kind whose name takes it, in the name itself ("Library
+   *     Boneyard Tutoring");
    *   - an entry for the same tutor as the one before it leaves the name off
    *     (`sameTutor`), so it reads "Caroline Mon 11:00 AM-4:00 PM, Tue & Thu
    *     12:00-5:00 PM".
@@ -182,11 +186,17 @@
       if (!entries.length) return null;
       var rooms = entries.map(function (g) { return g.room || ''; });
       var shared = rooms.every(function (r) { return r && r === rooms[0]; }) ? rooms[0] : '';
+      // A kind whose name takes its room ("Library Boneyard Tutoring") says
+      // the room there and nowhere else.
+      var named = shared && kind.roomTitle ? kind.roomTitle.replace('{room}', shared) : '';
       return {
         kind: kind.key,
-        heading: kind.plural,
-        room: shared,
-        only: tutors ? classesOnlyLabel(entries.reduce(function (m, g) {
+        heading: named || kind.plural,
+        title: named || kind.title || kind.plural,
+        room: named ? '' : shared,
+        // Only where anyone may walk in: an embedded tutor helps the one class
+        // they sit in, whatever else they are signed up for.
+        only: tutors && kind.saysClasses ? classesOnlyLabel(entries.reduce(function (m, g) {
           return m | (maskOf[g.tutorId] || 0);
         }, 0)) : '',
         entries: entries.map(function (g, i) {
