@@ -90,7 +90,7 @@
    * tutor's second entry in a row leaves the name off (U.offRoomRuns).
    */
   function offRoomRuns(state, labels) {
-    return U.offRoomRuns(state.assignments, labels).map(function (run) {
+    return U.offRoomRuns(state.assignments, labels, state.tutors).map(function (run) {
       var text = '';
       run.entries.forEach(function (e) {
         var tutor = TS.store.getTutor(e.tutorId);
@@ -100,6 +100,7 @@
         if (!text) text = labels[tutor.id] + ' ' + entry;
         else text += e.sameTutor ? ', ' + entry : '  ·  ' + labels[tutor.id] + ' ' + entry;
       });
+      if (text && run.only) text += '  —  ' + run.only;
       return text
         ? { label: run.heading + (run.room ? ' (' + run.room + ')' : '') + ':', text: text }
         : null;

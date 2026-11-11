@@ -161,12 +161,15 @@
     portrait: { width: 739, grid: 600 }     // 8.5 x 11in
   };
   var page = PAGES.landscape;              // set from the schedule on each render
-  /* The budget above holds a band of shifts held elsewhere two lines deep and
-   * the notes box under the grid. Each line the band runs past two comes out
-   * of the grid; with the notes up in the header (notesInHead), the height
-   * their box used goes back to it. Set per 7 weeks, in renderPeriod. */
-  var NOTES_MOVED_PX = 60;
-  var BAND_LINE_PX = 22, BAND_BASE_LINES = 2;
+  /* The budget above was set for a page with a two-line band of shifts held
+   * elsewhere under the grid, the notes box under that, and a legend in the
+   * footer. The hall handout has neither band nor legend now -- the footer is
+   * the QR code and the two "also find tutoring" blocks -- so the grid takes
+   * back that height, less a line for each row a block runs past
+   * SPOT_BASE_ROWS. With the notes up in the header (notesInHead), the height
+   * their box used goes back to it too. Set per 7 weeks, in renderPeriod. */
+  var NOTES_MOVED_PX = 60, BAND_FREED_PX = 34;
+  var SPOT_ROW_PX = 17, SPOT_BASE_ROWS = 3;
   var gridBonus = 0;
   var GUTTER_PX = 62;      // .pv-time
   var ROW_MIN_PX = 14, ROW_MAX_PX = 34;
@@ -344,54 +347,48 @@
       days, function (run, cls, lanes, rowPx) { return subjectCell(run, labels, cls, lanes, rowPx); });
   }
 
-  function buildSubjectLegend(runs) {
-    if (!runs.length) return '';
-    var totals = U.coverageLaneHours(runs);
-    var items = U.coverageLanes().map(function (lane, i) {
-      var colors = U.laneColors(lane, false);
-      return '<li><span class="pv-swatch" style="background:' + colors.bg +
-        ';border-left:5px solid ' + colors.bar + '"></span>' +
-        esc(U.laneLabel(lane)) + ' <span class="pv-legend__subjects">' +
-        esc(U.hoursLabel(totals[i])) + ' a week</span></li>';
-    }).join('');
-    return '<section class="pv-legend"><h2>Classes</h2><ul>' + items + '</ul></section>';
+  /* ---- also find tutoring ----
+   * The footer's two blocks, beside the QR code: library tutoring on the
+   * left, the open lab on the right. They are the other places a student can
+   * walk in for help, so each one is a box of its own that reads from across
+   * a hallway, not a footnote. Floating embedded tutors are left off the hall
+   * handout altogether -- they only help the class they sit in, and those
+   * students already know -- but stay in the app and the listing.
+   */
+  var SPOT_KINDS = ['library', 'lab'];
+
+  function spotRuns(state, labels) {
+    var runs = U.offRoomRuns(state.assignments, labels, state.tutors);
+    return SPOT_KINDS.map(function (key) {
+      return runs.filter(function (run) { return run.kind === key; })[0];
+    }).filter(Boolean);
   }
 
-  // How many lines the band under the grid will run to, each kind wrapping
-  // across the page's width at the band's text size.
-  function bandLines(state, labels) {
-    var width = page.width - 18; // less the band's bar and padding
-    return U.offRoomRuns(state.assignments, labels).reduce(function (sum, run) {
-      var text = run.heading + (run.room ? ' (' + run.room + ')' : '') + ': ' +
-        run.entries.map(function (e) {
-          return (e.sameTutor ? '' : labels[e.tutorId] + ' ') + U.daysLabel(e.days) + ' ' +
-            U.formatRange(e.startSlot, e.endSlot) + (e.room ? ' (' + e.room + ')' : '');
-        }).join(' · ');
-      return sum + nameLinesNeeded(text, width, 8.5);
-    }, 0);
-  }
-
-  /* Tutoring held away from the center, one run per kind, library first.
-   * The room is said once beside the heading when the whole run shares it,
-   * and a tutor's second entry in a row leaves her name off -- see
-   * U.offRoomRuns. */
-  function buildOffRoom(state, labels) {
-    var runs = U.offRoomRuns(state.assignments, labels).map(function (run) {
-      var items = run.entries.map(function (e) {
+  function buildSpots(state, labels) {
+    return spotRuns(state, labels).map(function (run) {
+      var kind = U.shiftKind(run.kind);
+      var rows = run.entries.map(function (e) {
         var tutor = TS.store.getTutor(e.tutorId);
         if (!tutor) return '';
-        return '<li' + (e.sameTutor ? ' class="pv-offroom__more"' : '') + '>' +
-          (e.sameTutor ? '' : '<strong>' + esc(labels[tutor.id]) + '</strong> ') +
-          esc(U.daysLabel(e.days)) + ' ' + esc(U.formatRange(e.startSlot, e.endSlot)) +
-          (e.room ? ' (' + esc(e.room) + ')' : '') + '</li>';
+        return '<tr><th scope="row">' + esc(U.daysLabel(e.days)) + '</th>' +
+          '<td class="pv-nowrap">' + esc(U.formatRange(e.startSlot, e.endSlot)) + '</td>' +
+          '<td>' + (e.sameTutor ? '' : esc(labels[tutor.id])) +
+            (e.room ? ' <span class="pv-spot__where">(' + esc(e.room) + ')</span>' : '') + '</td></tr>';
       }).join('');
-      if (!items) return '';
-      return '<div class="pv-offroom__run pv-offroom__run--' + run.kind + '"><h2>' +
-        esc(run.heading) + (run.room ? ' <span class="pv-offroom__room">(' + esc(run.room) + ')</span>' : '') +
-        '</h2><ul>' + items + '</ul></div>';
+      return '<section class="pv-spot pv-spot--' + run.kind + '">' +
+        '<h2><span>' + esc(kind.title || kind.plural) + '</span>' +
+          (run.room ? '<span class="pv-spot__room">' + esc(run.room) + '</span>' : '') + '</h2>' +
+        (run.only ? '<p class="pv-spot__only">' + esc(run.only) + '</p>' : '') +
+        '<table class="pv-spot__list"><tbody>' + rows + '</tbody></table>' +
+        '</section>';
     }).join('');
-    if (!runs) return '';
-    return '<section class="pv-offroom">' + runs + '</section>';
+  }
+
+  // The most rows either block runs to.
+  function spotRows(state, labels) {
+    return spotRuns(state, labels).reduce(function (most, run) {
+      return Math.max(most, run.entries.length + (run.only ? 1 : 0));
+    }, 0);
   }
 
   function buildListing(state, labels) {
@@ -426,19 +423,6 @@
 
     if (!any) html += '<p>No shifts are scheduled yet.</p>';
     return html + '</section>';
-  }
-
-  function buildLegend(state, labels) {
-    if (!state.tutors.length) return '';
-    var items = state.tutors.map(function (t) {
-      var colors = U.blockColors(t.colorIndex, false);
-      var shorts = U.maskToShort(U.subjectMask(t.subjects));
-      return '<li><span class="pv-swatch" style="background:' + colors.bg +
-        ';border-left:5px solid ' + colors.bar + '"></span>' +
-        esc(labels[t.id]) + ' <span class="pv-legend__subjects">' +
-        esc(shorts.join(' · ') || '—') + '</span></li>';
-    }).join('');
-    return '<section class="pv-legend"><h2>Tutors</h2><ul>' + items + '</ul></section>';
   }
 
   /* ---- page furniture ----
@@ -492,7 +476,7 @@
       '"><h2>Important notes</h2><p>' + esc(notes) + '</p></section>';
   }
 
-  function buildFoot(state, legendHtml) {
+  function buildFoot(state, spotsHtml) {
     var s = state.settings;
     // The link itself is left off the page: it is long and carries an id
     // nobody would type, so the code is what gets used.
@@ -503,19 +487,18 @@
         (s.qrHeading ? '<p><strong>' + esc(s.qrHeading) + '</strong></p>' : '') +
         (s.qrCaption ? '<p>' + esc(s.qrCaption) + '</p>' : '') +
       '</div>' +
-      legendHtml +
+      spotsHtml +
       '</div>';
   }
 
-  /* A whole handout page: the furniture wrapped round one grid and the legend
-   * that decodes that grid's colours. */
-  function buildHandout(state, labels, tableHtml, legendHtml) {
+  /* A whole handout page: the furniture wrapped round one grid. No legend:
+   * every block already carries its tutor's name or its class's code. */
+  function buildHandout(state, labels, tableHtml) {
     var notesHere = notesInHead(state);
     return buildHead(state, notesHere) +
       tableHtml +
-      buildOffRoom(state, labels) +
       (notesHere ? '' : buildNotes(state, false)) +
-      buildFoot(state, legendHtml);
+      buildFoot(state, buildSpots(state, labels));
   }
 
   /* One half's pages. Printed double sided, the two calendars are the two
@@ -526,13 +509,13 @@
     var labels = U.displayNames(view.tutors);
     var runs = U.coverageRuns(view.assignments, view.tutors);
     var listing = view.settings.includeListing ? buildListing(view, labels) : '';
-    gridBonus = (notesInHead(view) ? NOTES_MOVED_PX : 0) -
-      Math.max(0, bandLines(view, labels) - BAND_BASE_LINES) * BAND_LINE_PX;
+    gridBonus = (notesInHead(view) ? NOTES_MOVED_PX : 0) + BAND_FREED_PX -
+      Math.max(0, spotRows(view, labels) - SPOT_BASE_ROWS) * SPOT_ROW_PX;
     return '<section class="pv-period">' +
-      buildHandout(view, labels, buildTable(view, labels), buildLegend(view, labels)) +
+      buildHandout(view, labels, buildTable(view, labels)) +
       listing +
       '<section class="pv-coverage">' +
-        buildHandout(view, labels, buildSubjectTable(view, labels, runs), buildSubjectLegend(runs)) +
+        buildHandout(view, labels, buildSubjectTable(view, labels, runs)) +
       '</section>' +
       listing +
       '</section>';
@@ -558,6 +541,7 @@
   // choice asks for.
   function render(container, state) {
     setPage(state.settings.orientation);
+    container.classList.toggle('pv-portrait', page === PAGES.portrait);
     container.innerHTML = TS.store.printViews().map(renderPeriod).join('');
   }
 

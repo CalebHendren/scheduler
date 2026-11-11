@@ -1039,6 +1039,15 @@
       'a tutor listed twice in a row is named once');
     r.eq(runs[1].room, '', 'rooms that differ stay with their entries');
     r.eq(runs[1].entries[0].room, 'OMN 296', 'each one saying its own');
+    var only = U.offRoomRuns([
+      { id: 'c1', tutorId: 'car', day: 4, startSlot: 4, endSlot: 14, kind: 'lab', room: 'OMN 286' }
+    ], { car: 'Caroline' }, [{ id: 'car', subjects: { ap1: true, ap2: true } }]);
+    r.eq(only[0].only, 'Anatomy & Physiology only',
+      'a lab run by A&P tutors says it is for A&P only, the pair read as one');
+    r.eq(U.classesOnlyLabel(U.subjectMask({ bio: true, micro: true, ap1: true, ap2: true })), '',
+      'every class is not a restriction worth printing');
+    r.eq(U.classesOnlyLabel(U.subjectMask({ bio: true, ap1: true })),
+      'Biology & Anatomy & Physiology only', 'two classes are named together');
     r.eq(TS.store.normalizeAssignment({ tutorId: 't', kind: 'library', room: ' Boneyard ' }).room,
       'Boneyard', 'library tutoring keeps its kind and room');
   }

@@ -86,10 +86,11 @@
     // Drop-in tutoring like the center's, at a second spot on campus -- the
     // library's "Boneyard" -- so it is listed first, nearest the grid.
     { key: 'library', label: 'Library tutoring', short: 'Library', plural: 'Library Tutoring',
-      placeholder: 'Boneyard' },
+      title: 'Library Tutoring', placeholder: 'Boneyard' },
     { key: 'embedded', label: 'Floating embedded tutor', short: 'Embedded',
       plural: 'Floating Embedded Tutors', placeholder: 'OMN 286' },
-    { key: 'lab', label: 'Open lab', short: 'Open lab', plural: 'Open Labs', placeholder: 'OMN 286' }
+    { key: 'lab', label: 'Open lab', short: 'Open lab', plural: 'Open Labs', title: 'Open Lab',
+      placeholder: 'OMN 286' }
   ];
 
   function shiftKind(key) {
@@ -166,8 +167,14 @@
    *   - an entry for the same tutor as the one before it leaves the name off
    *     (`sameTutor`), so it reads "Caroline Mon 11:00 AM-4:00 PM, Tue & Thu
    *     12:00-5:00 PM".
+   *
+   * With `tutors`, each run also carries `only`: the classes its tutors
+   * cover, when that is fewer than all of them -- "Anatomy & Physiology only"
+   * -- so a student does not walk to the library for help nobody there gives.
    */
-  function offRoomRuns(assignments, labels) {
+  function offRoomRuns(assignments, labels, tutors) {
+    var maskOf = {};
+    (tutors || []).forEach(function (t) { maskOf[t.id] = subjectMask(t.subjects); });
     var groups = groupOffRoom(assignments, labels);
     return SHIFT_KINDS.map(function (kind) {
       if (kind.key === 'main') return null;
@@ -179,6 +186,9 @@
         kind: kind.key,
         heading: kind.plural,
         room: shared,
+        only: tutors ? classesOnlyLabel(entries.reduce(function (m, g) {
+          return m | (maskOf[g.tutorId] || 0);
+        }, 0)) : '',
         entries: entries.map(function (g, i) {
           return {
             tutorId: g.tutorId, days: g.days, startSlot: g.startSlot, endSlot: g.endSlot,
@@ -188,6 +198,20 @@
         })
       };
     }).filter(Boolean);
+  }
+
+  /* "Anatomy & Physiology only" for a set of classes short of the whole list,
+   * named the way the class page's lanes are (AP1 and AP2 read as one); ''
+   * when it is every class, or none. */
+  function classesOnlyLabel(mask) {
+    var lanes = coverageLanes().filter(function (lane) {
+      return lane.some(function (i) { return mask & SUBJECTS[i].bit; });
+    });
+    if (!lanes.length || lanes.length === coverageLanes().length) return '';
+    var names = lanes.map(laneLabel);
+    var list = names.length < 2 ? names[0]
+      : names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1];
+    return list + ' only';
   }
 
   function compareNames(a, b) {
@@ -1236,6 +1260,7 @@
     daysLabel: daysLabel,
     groupOffRoom: groupOffRoom,
     offRoomRuns: offRoomRuns,
+    classesOnlyLabel: classesOnlyLabel,
     compareNames: compareNames,
     sortedNames: sortedNames,
     capRules: capRules,

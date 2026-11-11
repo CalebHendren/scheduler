@@ -146,13 +146,21 @@ interchangeable. A shift is one of four things, set under **Where** when you add
 
 The last three ask for a room (`Boneyard`, `OMN 286`) and are listed beside the calendar under
 **Library Tutoring**, **Floating Embedded Tutors** and **Open Labs**, rather than drawn as
-blocks. On the handout each kind becomes a line under the grid — *Floating Embedded Tutors:
-Bailey Tue & Thu 12:30–2:00 PM (OMN 286)* — the same footnote the old paper schedules carried.
-Library tutoring comes first, nearest the grid, since it is drop-in tutoring like the center's.
-Entries are listed the way the week reads: by the first day each one runs, then by start time,
-then by name. Two things keep the lines short: a room every entry of a kind shares is said once,
-beside the heading, and a tutor listed twice in a row is named once — *Library Tutoring
-(Boneyard): Caroline Mon 11:00 AM–4:00 PM, Tue & Thu 12:00–5:00 PM*. The page-2 listing keeps them in with everything
+blocks. Entries are listed the way the week reads: by the first day each one runs, then by
+start time, then by name.
+
+On the **Print / Save as PDF** handout — the one that goes up in the halls — library tutoring and
+the open lab are the other places a student can walk in for help, so each gets a block of its own
+along the bottom, beside the QR code: **Library Tutoring** on the left, **Open Lab** on the
+right. Each block names its room in its heading, lists its days and times with the tutor, and
+says which classes it is for when that is fewer than all of them — *Anatomy & Physiology only*,
+worked out from the classes its tutors are checked for. Floating embedded tutors are left off the
+hall handout: they help only the class they sit in, and those students already know.
+
+**Download PDF** keeps all three kinds as lines under the grid — *Floating Embedded Tutors:
+Bailey Tue & Thu 12:30–2:00 PM (OMN 286)* — the same footnote the old paper schedules carried,
+library tutoring first. A room every entry of a kind shares is said once, beside the heading, a
+tutor listed twice in a row is named once, and the same *only* note ends the line. The page-2 listing keeps them in with everything
 else, so it stays a complete record.
 
 What they change:
@@ -318,11 +326,13 @@ Two buttons, for two different needs:
 - **Print / Save as PDF** — the one to use for anything you hand out or post. It prints from a
   real HTML table with proper row and column headers, so the PDF Chrome and Edge produce has
   selectable text, keeps its table structure, and carries a document language. Each 7 weeks is
-  two pages: the calendar, the notes, the QR code and the legend, then **Coverage by class** —
+  two pages: the calendar, the notes, the QR code and the library and open lab blocks, then
+  **Coverage by class** —
   printed double sided, one sheet with a calendar on each face.
-- **Download PDF** — one click, no print dialog, drawn directly with jsPDF. Same pages,
-  same layout and real text (nothing is a screenshot), but jsPDF does not emit a
-  tagged structure tree, so it is the convenience option rather than the accessible one.
+- **Download PDF** — one click, no print dialog, drawn directly with jsPDF. The same two
+  calendars in real text (nothing is a screenshot), with a legend and every kind of shift held
+  elsewhere listed under the grid. jsPDF does not emit a tagged structure tree, so it is the
+  convenience option rather than the accessible one.
 
 The **Layout** choice beside them turns the pages **Landscape** (the default) or **Portrait**.
 It is saved with the schedule, so it comes back the next time and travels in **Export JSON**.
@@ -364,12 +374,12 @@ across their joined hours — close enough, and never a name cut in half. Otherw
 always stays and the names give way. A gap with nobody in for the class ends the block; the next one starts
 with the class code again.
 
-It is otherwise page 1 exactly: the same header, the same notes, the same band of shifts held
-elsewhere, the same QR block. Only the grid changes, and the legend that decodes it.
+It is otherwise page 1 exactly: the same header, the same notes, the same QR code and blocks
+along the bottom. Only the grid changes (and, in **Download PDF**, the legend that decodes it).
 
 A tutor signed up for three classes covers all three the moment they sit down, so one 9–12
 shift by that tutor is three blocks at 9–12, one per lane. That is the point of the page, not
-double counting: the legend's weekly hours are hours of cover per class, and they can add up to
+double counting: the **Download PDF** legend's weekly hours are hours of cover per class, and they can add up to
 more than the center is open.
 
 Bio is green and Micro is pink. **Anatomy & Physiology I and II share one lane** — anyone
@@ -386,8 +396,9 @@ Both are US Letter, landscape or portrait as **Layout** says. Printing always us
 theme even if you are working in dark mode. The print stylesheet sets a zero `@page` margin and
 insets the handout itself, which is what keeps Chrome and Edge from stamping the document title
 across the top of the page and the page URL across the bottom — there is no CSS switch for those, only the margin they are
-drawn into. Both carry the semester, the location and contact, the QR code, a tutor legend and
-the important notes, plus the plain-text listing when it is turned on.
+drawn into. Both carry the semester, the location and contact, the QR code and the important
+notes, plus the plain-text listing when it is turned on. The hall handout has no legend — every
+block already says who or which class it is — and **Download PDF** keeps one.
 
 ### What goes on the handout
 

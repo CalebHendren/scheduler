@@ -119,32 +119,6 @@ html, body {
 .pv-table .pv-time { border-right: 2.5pt solid #10305F; }
 .pv-day-alt.pv-empty { background: #F2F6FB; }
 
-/* ---- floating embedded tutors & open labs -------------------------------
-   A footnote band, not a second table: each kind is one run of inline
-   entries, so the whole thing costs a line or two of the page-one budget. */
-
-.pv-offroom {
-  margin-top: 4px; padding: 3px 7px;
-  border: 1px solid #10305F; border-left: 4px solid #0072B2;
-  page-break-inside: avoid;
-}
-.pv-offroom__run + .pv-offroom__run { margin-top: 2px; }
-.pv-offroom h2 {
-  display: inline; font-family: Georgia, "Times New Roman", serif;
-  font-size: 9.5pt; color: #002855; margin-right: .35em;
-}
-.pv-offroom h2::after { content: ":"; }
-.pv-offroom ul {
-  display: inline; list-style: none; margin: 0; padding: 0; font-size: 8.5pt;
-}
-.pv-offroom li { display: inline; }
-.pv-offroom li + li::before { content: " · "; font-weight: 700; }
-/* The same tutor again: a comma, and no second name. */
-.pv-offroom li.pv-offroom__more::before { content: ", "; font-weight: 400; }
-/* A room every entry shares is said once, beside the heading. */
-.pv-offroom__room { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-  font-weight: 700; font-size: 8.5pt; color: #14181F; }
-
 /* ---- important notes --------------------------------------------------- */
 
 .pv-notes {
@@ -169,26 +143,58 @@ html, body {
 .pv-head__main { flex: 0 0 auto; max-width: 330px; }
 .pv-head__contact { flex: 0 0 auto; max-width: 215px; }
 
-/* ---- footer ------------------------------------------------------------ */
+/* ---- footer ------------------------------------------------------------
+   The QR code, then the two "also find tutoring" blocks side by side --
+   library tutoring on the left, the open lab on the right -- sharing the rest
+   of the width. */
 
 .pv-foot {
-  display: flex; gap: 16px; align-items: flex-start;
-  margin-top: 5px; padding-top: 4px; border-top: 1px solid #B9C3D1;
+  display: flex; gap: 14px; align-items: stretch;
+  margin-top: 6px; padding-top: 5px; border-top: 1px solid #B9C3D1;
   page-break-inside: avoid;
 }
+.pv-qr { flex: 0 0 auto; }
 .pv-qr .qr-svg { width: 58px; height: 58px; border: 1px solid #B9C3D1; }
-.pv-qr__text { font-size: 8.5pt; line-height: 1.3; max-width: 190px; }
+.pv-qr__text { flex: 0 0 auto; font-size: 8.5pt; line-height: 1.3; max-width: 170px; }
 .pv-qr__text p { margin: 0 0 1px; }
 
-.pv-legend { flex: 1 1 auto; }
-.pv-legend h2 { font-size: 10pt; margin: 0 0 3px; font-family: Georgia, serif; }
-.pv-legend ul {
-  list-style: none; margin: 0; padding: 0;
-  display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 8.5pt;
+.pv-spot {
+  flex: 1 1 0; min-width: 0;
+  border: 1.5px solid #10305F; border-radius: 3px; overflow: hidden;
+  background: #fff;
 }
-.pv-legend li { display: flex; align-items: center; gap: 5px; }
-.pv-swatch { display: inline-block; width: 16px; height: 10px; border: 1px solid #6B7789; }
-.pv-legend__subjects { color: #3A4553; font-weight: 700; font-size: 8pt; }
+/* The same navy band the day headings wear, so each block reads as part of
+   the schedule; the place is on the right of it. */
+.pv-spot h2 {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  margin: 0; padding: 3px 8px;
+  background: #10305F; color: #fff;
+  font-family: Georgia, "Times New Roman", serif; font-size: 11.5pt;
+}
+.pv-spot__room {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 9.5pt; font-weight: 700; color: #FFD8C2;
+}
+.pv-spot__only {
+  margin: 0; padding: 2px 8px;
+  background: #FFF1E8; border-bottom: 1px solid #F3C9B0;
+  font-size: 9pt; font-weight: 700; color: #8A2E00;
+}
+/* Days and times stay on one line and take only the width they need; the
+   names get the rest. */
+.pv-spot__list {
+  border-collapse: collapse; margin: 3px 8px 4px; width: calc(100% - 16px);
+  font-size: 9.5pt;
+}
+.pv-spot__list th, .pv-spot__list td { padding: 1px 10px 1px 0; text-align: left; vertical-align: top; }
+.pv-spot__list th { font-weight: 700; white-space: nowrap; width: 1%; }
+.pv-spot__list td.pv-nowrap { width: 1%; }
+/* A portrait sheet is narrow: the QR caption gives the blocks some of its
+   width, so a day, a time and a name still fit on one row. */
+.pv-portrait .pv-qr__text { max-width: 110px; }
+.pv-portrait .pv-foot { gap: 10px; }
+.pv-spot__list td:last-child { font-weight: 700; padding-right: 0; }
+.pv-spot__where { font-weight: 400; color: #3A4553; }
 
 /* Each 7 weeks starts a sheet of its own, with the inset the print root only
    gives the first page. */
