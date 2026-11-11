@@ -153,10 +153,19 @@ html, body {
   margin-top: 6px; padding-top: 5px; border-top: 1px solid #B9C3D1;
   page-break-inside: avoid;
 }
+/* As tall as the blocks beside it, so it costs the grid nothing, and big
+   enough to scan from a step back down the hall. */
 .pv-qr { flex: 0 0 auto; }
-.pv-qr .qr-svg { width: 58px; height: 58px; border: 1px solid #B9C3D1; }
-.pv-qr__text { flex: 0 0 auto; font-size: 8.5pt; line-height: 1.3; max-width: 170px; }
-.pv-qr__text p { margin: 0 0 1px; }
+.pv-qr .qr-svg { width: 92px; height: 92px; border: 1px solid #B9C3D1; display: block; }
+.pv-qr__text {
+  flex: 0 0 auto; max-width: 190px; align-self: center;
+  font-size: 10.5pt; line-height: 1.3;
+}
+.pv-qr__text p { margin: 0 0 3px; }
+.pv-qr__text strong {
+  display: block; font-family: Georgia, "Times New Roman", serif;
+  font-size: 13pt; line-height: 1.15; color: #002855;
+}
 
 .pv-spot {
   flex: 1 1 0; min-width: 0;
@@ -191,7 +200,11 @@ html, body {
 .pv-spot__list td.pv-nowrap { width: 1%; }
 /* A portrait sheet is narrow: the QR caption gives the blocks some of its
    width, so a day, a time and a name still fit on one row. */
-.pv-portrait .pv-qr__text { max-width: 110px; }
+.pv-portrait .pv-qr__text { max-width: 125px; font-size: 9.5pt; }
+.pv-portrait .pv-qr__text strong { font-size: 11.5pt; }
+.pv-portrait .pv-qr .qr-svg { width: 84px; height: 84px; }
+.pv-portrait .pv-spot__list { font-size: 9pt; }
+.pv-portrait .pv-spot__list th, .pv-portrait .pv-spot__list td { padding-right: 7px; }
 .pv-portrait .pv-foot { gap: 10px; }
 .pv-spot__list td:last-child { font-weight: 700; padding-right: 0; }
 .pv-spot__where { font-weight: 400; color: #3A4553; }
