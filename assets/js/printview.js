@@ -161,12 +161,19 @@
     portrait: { width: 739, grid: 600 }     // 8.5 x 11in
   };
   var page = PAGES.landscape;              // set from the schedule on each render
+  /* The budget above holds a band of shifts held elsewhere two lines deep and
+   * the notes box under the grid. Each line the band runs past two comes out
+   * of the grid; with the notes up in the header (notesInHead), the height
+   * their box used goes back to it. Set per 7 weeks, in renderPeriod. */
+  var NOTES_MOVED_PX = 60;
+  var BAND_LINE_PX = 22, BAND_BASE_LINES = 2;
+  var gridBonus = 0;
   var GUTTER_PX = 62;      // .pv-time
   var ROW_MIN_PX = 14, ROW_MAX_PX = 34;
 
   function rowPxFor(win) {
     var rows = Math.max(1, win.end - win.start);
-    return Math.max(ROW_MIN_PX, Math.min(ROW_MAX_PX, Math.floor(page.grid / rows)));
+    return Math.max(ROW_MIN_PX, Math.min(ROW_MAX_PX, Math.floor((page.grid + gridBonus) / rows)));
   }
 
   var LABEL_PX = 14;       // .pv-block__name, 9pt at line-height 1.1
@@ -350,26 +357,40 @@
     return '<section class="pv-legend"><h2>Classes</h2><ul>' + items + '</ul></section>';
   }
 
+  // How many lines the band under the grid will run to, each kind wrapping
+  // across the page's width at the band's text size.
+  function bandLines(state, labels) {
+    var width = page.width - 18; // less the band's bar and padding
+    return U.offRoomRuns(state.assignments, labels).reduce(function (sum, run) {
+      var text = run.heading + (run.room ? ' (' + run.room + ')' : '') + ': ' +
+        run.entries.map(function (e) {
+          return (e.sameTutor ? '' : labels[e.tutorId] + ' ') + U.daysLabel(e.days) + ' ' +
+            U.formatRange(e.startSlot, e.endSlot) + (e.room ? ' (' + e.room + ')' : '');
+        }).join(' · ');
+      return sum + nameLinesNeeded(text, width, 8.5);
+    }, 0);
+  }
+
+  /* Tutoring held away from the center, one run per kind, library first.
+   * The room is said once beside the heading when the whole run shares it,
+   * and a tutor's second entry in a row leaves her name off -- see
+   * U.offRoomRuns. */
   function buildOffRoom(state, labels) {
-    var groups = U.groupOffRoom(state.assignments, labels);
-    if (!groups.length) return '';
-
-    var runs = U.SHIFT_KINDS.map(function (kind) {
-      if (kind.key === 'main') return '';
-      var items = groups.filter(function (g) { return g.kind === kind.key; })
-        .map(function (g) {
-          var tutor = TS.store.getTutor(g.tutorId);
-          if (!tutor) return '';
-          return '<li><strong>' + esc(labels[tutor.id]) + '</strong> ' +
-            esc(U.daysLabel(g.days)) + ' ' +
-            esc(U.formatRange(g.startSlot, g.endSlot)) +
-            ' (' + esc(g.room || 'room TBA') + ')</li>';
-        }).join('');
+    var runs = U.offRoomRuns(state.assignments, labels).map(function (run) {
+      var items = run.entries.map(function (e) {
+        var tutor = TS.store.getTutor(e.tutorId);
+        if (!tutor) return '';
+        return '<li' + (e.sameTutor ? ' class="pv-offroom__more"' : '') + '>' +
+          (e.sameTutor ? '' : '<strong>' + esc(labels[tutor.id]) + '</strong> ') +
+          esc(U.daysLabel(e.days)) + ' ' + esc(U.formatRange(e.startSlot, e.endSlot)) +
+          (e.room ? ' (' + esc(e.room) + ')' : '') + '</li>';
+      }).join('');
       if (!items) return '';
-      return '<div class="pv-offroom__run"><h2>' + esc(kind.plural) + '</h2>' +
-        '<ul>' + items + '</ul></div>';
+      return '<div class="pv-offroom__run pv-offroom__run--' + run.kind + '"><h2>' +
+        esc(run.heading) + (run.room ? ' <span class="pv-offroom__room">(' + esc(run.room) + ')</span>' : '') +
+        '</h2><ul>' + items + '</ul></div>';
     }).join('');
-
+    if (!runs) return '';
     return '<section class="pv-offroom">' + runs + '</section>';
   }
 
@@ -425,7 +446,23 @@
    * carries and which legend decodes it, so everything either page would
    * otherwise repeat is built here and handed to both.
    */
-  function buildHead(state) {
+  /* The important notes go where they fit best. On a landscape sheet the
+   * header has a wide empty stretch between the title and the contact, and a
+   * short notice there is the first thing read and costs the grid nothing; the
+   * space under the grid is then left to tutoring held elsewhere. A notice too
+   * long for that stretch -- and every notice on a portrait sheet, where the
+   * stretch is too narrow -- goes in its box under the grid, as before. */
+  var HEAD_NOTE_PT = 8.5, HEAD_NOTE_LINES = 4;
+  var HEAD_TITLE_PX = 330, HEAD_CONTACT_PX = 215; // what the two ends of the header take
+
+  function notesInHead(state) {
+    var notes = state.settings.notes;
+    if (!notes || page !== PAGES.landscape) return false;
+    var width = page.width - HEAD_TITLE_PX - HEAD_CONTACT_PX - 16; // less the box's padding
+    return nameLinesNeeded(notes, width, HEAD_NOTE_PT) <= HEAD_NOTE_LINES;
+  }
+
+  function buildHead(state, notesHere) {
     var s = state.settings;
     // Which 7 weeks this is, beside the semester: the two halves' handouts
     // look alike, and one posted for the wrong half is easy to miss.
@@ -438,6 +475,7 @@
         (s.effective ? '<p class="pv-subtitle">' + esc(s.effective) + '</p>' : '') +
         '<p class="pv-where">' + esc(s.location) + '</p>' +
       '</div>' +
+      (notesHere ? buildNotes(state, true) : '') +
       (s.contactName || s.contactEmail
         ? '<div class="pv-head__contact"><p>' +
             (s.contactName ? '<strong>' + esc(s.contactName) + '</strong>' : '') +
@@ -447,11 +485,11 @@
       '</header>';
   }
 
-  function buildNotes(state) {
+  function buildNotes(state, inHead) {
     var notes = state.settings.notes;
     if (!notes) return '';
-    return '<section class="pv-notes"><h2>Important notes</h2><p>' +
-      esc(notes) + '</p></section>';
+    return '<section class="pv-notes' + (inHead ? ' pv-notes--head' : '') +
+      '"><h2>Important notes</h2><p>' + esc(notes) + '</p></section>';
   }
 
   function buildFoot(state, legendHtml) {
@@ -472,10 +510,11 @@
   /* A whole handout page: the furniture wrapped round one grid and the legend
    * that decodes that grid's colours. */
   function buildHandout(state, labels, tableHtml, legendHtml) {
-    return buildHead(state) +
+    var notesHere = notesInHead(state);
+    return buildHead(state, notesHere) +
       tableHtml +
       buildOffRoom(state, labels) +
-      buildNotes(state) +
+      (notesHere ? '' : buildNotes(state, false)) +
       buildFoot(state, legendHtml);
   }
 
@@ -487,6 +526,8 @@
     var labels = U.displayNames(view.tutors);
     var runs = U.coverageRuns(view.assignments, view.tutors);
     var listing = view.settings.includeListing ? buildListing(view, labels) : '';
+    gridBonus = (notesInHead(view) ? NOTES_MOVED_PX : 0) -
+      Math.max(0, bandLines(view, labels) - BAND_BASE_LINES) * BAND_LINE_PX;
     return '<section class="pv-period">' +
       buildHandout(view, labels, buildTable(view, labels), buildLegend(view, labels)) +
       listing +

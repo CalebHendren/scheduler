@@ -7,7 +7,7 @@
    * commit and attaches the single-file build. Semantic versioning -- a new
    * feature is a minor bump, a fix is a patch.
    */
-  var VERSION = '1.5.0';
+  var VERSION = '1.6.0';
 
   var DAY_START_MIN = 7 * 60;      // 7:00 AM
   var SLOT_MINUTES = 30;
@@ -83,9 +83,13 @@
    */
   var SHIFT_KINDS = [
     { key: 'main', label: 'At the tutoring center', short: '', plural: '' },
+    // Drop-in tutoring like the center's, at a second spot on campus -- the
+    // library's "Boneyard" -- so it is listed first, nearest the grid.
+    { key: 'library', label: 'Library tutoring', short: 'Library', plural: 'Library Tutoring',
+      placeholder: 'Boneyard' },
     { key: 'embedded', label: 'Floating embedded tutor', short: 'Embedded',
-      plural: 'Floating Embedded Tutors' },
-    { key: 'lab', label: 'Open lab', short: 'Open lab', plural: 'Open Labs' }
+      plural: 'Floating Embedded Tutors', placeholder: 'OMN 286' },
+    { key: 'lab', label: 'Open lab', short: 'Open lab', plural: 'Open Labs', placeholder: 'OMN 286' }
   ];
 
   function shiftKind(key) {
@@ -149,6 +153,41 @@
       return a.days[0] - b.days[0] || a.startSlot - b.startSlot ||
         a.endSlot - b.endSlot || compareNames(name(a.tutorId), name(b.tutorId));
     });
+  }
+
+  /* The band under the handout's grid: one run per kind held away from the
+   * center, in SHIFT_KINDS order, each its entries from groupOffRoom. Two
+   * things keep it from repeating itself, which is most of what makes a
+   * footnote band look cluttered:
+   *
+   *   - where every entry in a run is in the same room, the room is said once,
+   *     beside the heading ("Library Tutoring (Boneyard):") and not after
+   *     each entry;
+   *   - an entry for the same tutor as the one before it leaves the name off
+   *     (`sameTutor`), so it reads "Caroline Mon 11:00 AM-4:00 PM, Tue & Thu
+   *     12:00-5:00 PM".
+   */
+  function offRoomRuns(assignments, labels) {
+    var groups = groupOffRoom(assignments, labels);
+    return SHIFT_KINDS.map(function (kind) {
+      if (kind.key === 'main') return null;
+      var entries = groups.filter(function (g) { return g.kind === kind.key; });
+      if (!entries.length) return null;
+      var rooms = entries.map(function (g) { return g.room || ''; });
+      var shared = rooms.every(function (r) { return r && r === rooms[0]; }) ? rooms[0] : '';
+      return {
+        kind: kind.key,
+        heading: kind.plural,
+        room: shared,
+        entries: entries.map(function (g, i) {
+          return {
+            tutorId: g.tutorId, days: g.days, startSlot: g.startSlot, endSlot: g.endSlot,
+            room: shared ? '' : (g.room || 'room TBA'),
+            sameTutor: i > 0 && entries[i - 1].tutorId === g.tutorId
+          };
+        })
+      };
+    }).filter(Boolean);
   }
 
   function compareNames(a, b) {
@@ -1196,6 +1235,7 @@
     roomLabel: roomLabel,
     daysLabel: daysLabel,
     groupOffRoom: groupOffRoom,
+    offRoomRuns: offRoomRuns,
     compareNames: compareNames,
     sortedNames: sortedNames,
     capRules: capRules,

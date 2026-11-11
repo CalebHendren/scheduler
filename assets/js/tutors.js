@@ -234,13 +234,14 @@
                 esc(k.key === 'main' ? state.settings.location || k.label : k.label) + '</option>';
             }).join('') +
           '</select>' +
-          '<p class="field__hint">A floating embedded tutor sits in the class as it is taught, ' +
-            'and an open lab is held in its own room. Neither one staffs the tutoring center, ' +
+          '<p class="field__hint">Library tutoring is drop-in tutoring in the library ' +
+            '(the Boneyard), a floating embedded tutor sits in the class as it is taught, ' +
+            'and an open lab is held in its own room. None of them staffs the tutoring center, ' +
             'so they are listed beside the calendar instead of drawn in it.</p></div>' +
         '<div class="field" id="f-shift-room-field"' + (kind === 'main' ? ' hidden' : '') + '>' +
           '<label for="f-shift-room">Room</label>' +
           '<input type="text" id="f-shift-room" value="' + esc(preset.room || '') +
-            '" placeholder="OMN 286"></div>' +
+            '" placeholder="' + esc(U.shiftKind(kind === 'main' ? 'lab' : kind).placeholder || '') + '"></div>' +
         '<p class="field__hint" id="shift-dialog-note"></p>' +
       '</div>' +
       '<div class="dialog__foot">' +
@@ -263,7 +264,10 @@
     kindSelect.addEventListener('change', function () {
       var offRoom = kindSelect.value !== 'main';
       roomField.hidden = !offRoom;
-      if (offRoom) roomInput.focus();
+      if (offRoom) {
+        roomInput.placeholder = U.shiftKind(kindSelect.value).placeholder || '';
+        roomInput.focus();
+      }
     });
 
     function read() {

@@ -8,9 +8,9 @@ Anatomy & Physiology I (AP1) and Anatomy & Physiology II (AP2) — and you can
 Enter your tutors, check the classes each one can tutor, paint their availability, and press
 **Auto-optimize**. You get a Monday–Friday, 7:00 AM–8:30 PM calendar you can print, hand out,
 and post — with a QR code students can scan to book a tutoring appointment. Shifts held somewhere
-other than IMC 270 — **Floating Embedded Tutors** sitting in a class, **Open Labs** in another
-room — are [listed beside the calendar](#embedded-classes-and-open-labs) rather than drawn in
-it. The term runs as [two 7-week halves](#the-two-7-week-halves), each with a week of its own.
+other than IMC 270 — **Library Tutoring** in the library's Boneyard, **Floating Embedded
+Tutors** sitting in a class, **Open Labs** in another room — are [listed beside the
+calendar](#library-tutoring-embedded-classes-and-open-labs) rather than drawn in it. The term runs as [two 7-week halves](#the-two-7-week-halves), each with a week of its own.
 
 **Live version:** https://calebhendren.github.io/scheduler/
 **Offline version:** download `scheduler-local.html` from the
@@ -133,21 +133,26 @@ One **Export JSON** file carries both halves, their dates, and which one was ope
 before the halves loads as the 1st 7 weeks, and the first date in its old free-text
 **Effective dates** becomes the 1st's start.
 
-## Embedded classes and open labs
+## Library tutoring, embedded classes and open labs
 
 Not every hour a tutor works is an hour at the tutoring center, and the two are not
-interchangeable. A shift is one of three things, set under **Where** when you add or edit it:
+interchangeable. A shift is one of four things, set under **Where** when you add or edit it:
 
 - **At the tutoring center** — IMC 270, or whatever **Location** says. This is the main
   calendar, and the only thing coverage means.
+- **Library tutoring** — drop-in tutoring at a second spot, the library's Boneyard.
 - **Floating embedded tutor** — the tutor sits in the class as it is taught, in the classroom.
 - **Open lab** — held in its own room.
 
-The last two ask for a room number (`OMN 286`) and are listed beside the calendar under
-**Floating Embedded Tutors** and **Open Labs**, rather than drawn as blocks. On the handout each
-kind becomes a line under the grid — *Floating Embedded Tutors: Bailey Tue & Thu 12:30–2:00 PM
-(OMN 286)* — the same footnote the old paper schedules carried. Entries are listed the way the
-week reads: by the first day each one runs, then by start time, then by name. The page-2 listing keeps them in with everything
+The last three ask for a room (`Boneyard`, `OMN 286`) and are listed beside the calendar under
+**Library Tutoring**, **Floating Embedded Tutors** and **Open Labs**, rather than drawn as
+blocks. On the handout each kind becomes a line under the grid — *Floating Embedded Tutors:
+Bailey Tue & Thu 12:30–2:00 PM (OMN 286)* — the same footnote the old paper schedules carried.
+Library tutoring comes first, nearest the grid, since it is drop-in tutoring like the center's.
+Entries are listed the way the week reads: by the first day each one runs, then by start time,
+then by name. Two things keep the lines short: a room every entry of a kind shares is said once,
+beside the heading, and a tutor listed twice in a row is named once — *Library Tutoring
+(Boneyard): Caroline Mon 11:00 AM–4:00 PM, Tue & Thu 12:00–5:00 PM*. The page-2 listing keeps them in with everything
 else, so it stays a complete record.
 
 What they change:
@@ -390,8 +395,12 @@ the important notes, plus the plain-text listing when it is turned on.
 **Schedule settings**. The contact fields start empty — fill them in once and they print on
 every handout, and appear in the app header.
 
-The notes print in a box under the grid — closure dates, the last day of tutoring, anything
-else people need to read off the wall. The default text is the fall 2026 closure schedule; edit
+The notes print in a box — closure dates, the last day of tutoring, anything else people need
+to read off the wall. On a landscape page the box sits in the header, between the title and the
+contact, where it is the first thing read and the space under the grid is left to the shifts
+held elsewhere; the grid takes back some of the height it saved. Notes too long for that spot
+(more than about four lines there), and all notes on a portrait page, print under the grid
+instead. The default text is the fall 2026 closure schedule; edit
 it for your term.
 
 The **Appointment QR code** settings hold the link the code opens — the Slate appointment form

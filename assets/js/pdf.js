@@ -86,21 +86,48 @@
   /* Each kind held somewhere other than the center, as one labelled run of
    * text. The same footnote the old handouts carried, and cheap enough on a
    * crowded page: "Floating Embedded Tutors: Bailey Tue & Thu 12:30-2:00 PM
-   * (OMN 286)".
+   * (OMN 286)". A room the whole run shares is said once, in the label, and a
+   * tutor's second entry in a row leaves the name off (U.offRoomRuns).
    */
   function offRoomRuns(state, labels) {
-    var groups = U.groupOffRoom(state.assignments, labels);
-    return U.SHIFT_KINDS.map(function (kind) {
-      if (kind.key === 'main') return null;
-      var text = groups.filter(function (g) { return g.kind === kind.key; })
-        .map(function (g) {
-          var tutor = TS.store.getTutor(g.tutorId);
-          if (!tutor) return '';
-          return labels[tutor.id] + ' ' + U.daysLabel(g.days) + ' ' +
-            U.formatRange(g.startSlot, g.endSlot) + ' (' + (g.room || 'room TBA') + ')';
-        }).filter(function (line) { return !!line; }).join('  ·  ');
-      return text ? { label: kind.plural + ':', text: text } : null;
+    return U.offRoomRuns(state.assignments, labels).map(function (run) {
+      var text = '';
+      run.entries.forEach(function (e) {
+        var tutor = TS.store.getTutor(e.tutorId);
+        if (!tutor) return;
+        var entry = U.daysLabel(e.days) + ' ' + U.formatRange(e.startSlot, e.endSlot) +
+          (e.room ? ' (' + e.room + ')' : '');
+        if (!text) text = labels[tutor.id] + ' ' + entry;
+        else text += e.sameTutor ? ', ' + entry : '  ·  ' + labels[tutor.id] + ' ' + entry;
+      });
+      return text
+        ? { label: run.heading + (run.room ? ' (' + run.room + ')' : '') + ':', text: text }
+        : null;
     }).filter(function (run) { return !!run; });
+  }
+
+  /* The important notes box: a tinted panel with the orange bar down its left
+   * edge, a heading, and the lines under it. Drawn in the header's empty
+   * middle when the notes fit there, or under the grid when they do not. */
+  function drawNotesBox(pdf, x, y, w, h, lines, pt, lead) {
+    pdf.setFillColor(252, 250, 247);
+    pdf.setDrawColor(NAVY[0], NAVY[1], NAVY[2]);
+    pdf.setLineWidth(0.5);
+    pdf.rect(x, y, w, h, 'FD');
+    pdf.setFillColor(ORANGE[0], ORANGE[1], ORANGE[2]);
+    pdf.rect(x, y, 3, h, 'F');
+
+    pdf.setFont('times', 'bold');
+    pdf.setFontSize(10.5);
+    pdf.setTextColor(0, 40, 85);
+    pdf.text('Important notes', x + 9, y + 12);
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(pt);
+    pdf.setTextColor(INK[0], INK[1], INK[2]);
+    lines.forEach(function (line, i) {
+      pdf.text(line, x + 9, y + 23.5 + i * lead);
+    });
   }
 
   /* ---- the grid frame, shared by both calendars ----
@@ -561,17 +588,43 @@
     pdf.setTextColor(INK[0], INK[1], INK[2]);
     pdf.text(s.location, margin, whereY);
 
+    var leftW = pdf.getTextWidth(s.location || '');
+    pdf.setFont('times', 'bold');
+    pdf.setFontSize(18);
+    leftW = Math.max(leftW, pdf.getTextWidth(s.title || ''));
+
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(9.5);
+    var contactW = Math.max(pdf.getTextWidth(s.contactName || ''), pdf.getTextWidth(s.contactEmail || ''));
     if (s.contactName) pdf.text(s.contactName, pageW - margin, margin + 14, { align: 'right' });
     if (s.contactEmail) {
       pdf.text(s.contactEmail, pageW - margin, (s.contactName ? margin + 26 : margin + 14),
         { align: 'right' });
     }
 
+    /* On a landscape sheet the notes go in the header's empty middle, between
+     * the title and the contact, when they fit in a few lines there: the first
+     * thing read, and the space under the grid is left to tutoring held
+     * elsewhere. Otherwise -- a long notice, or a portrait sheet's narrow
+     * header -- they keep their box under the grid. */
+    var headNotes = null;
+    if (s.notes && pageW > pageH) {
+      var hx = margin + leftW + 20;
+      var hw = pageW - margin - contactW - 20 - hx;
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8.5);
+      var hl = hw >= 200 ? pdf.splitTextToSize(s.notes, hw - 14) : [];
+      if (hl.length && hl.length <= 4) {
+        var hh = 18 + hl.length * 9.5;
+        headNotes = { x: hx, y: Math.max(margin, whereY + 2 - hh), w: hw, h: hh, lines: hl };
+        drawNotesBox(pdf, hx, headNotes.y, hw, hh, hl, 8.5, 9.5);
+      }
+    }
+
+    var ruleY = Math.max(whereY + 7, headNotes ? headNotes.y + headNotes.h + 5 : 0);
     pdf.setDrawColor(ORANGE[0], ORANGE[1], ORANGE[2]);
     pdf.setLineWidth(2);
-    pdf.line(margin, whereY + 7, pageW - margin, whereY + 7);
+    pdf.line(margin, ruleY, pageW - margin, ruleY);
 
     /* ---- grid geometry ---- */
     // The grid is the tutoring center; embedded classes and open labs are
@@ -580,13 +633,13 @@
     var win = U.scheduleWindow(drawn);
     var slotCount = win.end - win.start;
 
-    var gridTop = whereY + 18;
+    var gridTop = ruleY + 11;
     // The notes band is measured before the grid is laid out, so a long note
     // shortens the grid rather than running off the page. The band of shifts
     // held elsewhere is measured the same way, for the same reason.
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(9);
-    var noteLines = s.notes
+    var noteLines = s.notes && !headNotes
       ? pdf.splitTextToSize(s.notes, pageW - margin * 2 - 12)
       : [];
     // The box is this less the 8 points kept clear above the footer rule, and
@@ -657,27 +710,9 @@
       });
     }
 
-    /* ---- important notes ---- */
+    /* ---- important notes, when the header had no room for them ---- */
     if (noteLines.length) {
-      var noteTop = gridEnd + 10 + offH;
-      pdf.setFillColor(252, 250, 247);
-      pdf.setDrawColor(NAVY[0], NAVY[1], NAVY[2]);
-      pdf.setLineWidth(0.5);
-      pdf.rect(margin, noteTop, pageW - margin * 2, noteH - 8, 'FD');
-      pdf.setFillColor(ORANGE[0], ORANGE[1], ORANGE[2]);
-      pdf.rect(margin, noteTop, 3, noteH - 8, 'F');
-
-      pdf.setFont('times', 'bold');
-      pdf.setFontSize(10.5);
-      pdf.setTextColor(0, 40, 85);
-      pdf.text('Important notes', margin + 9, noteTop + 12);
-
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(9);
-      pdf.setTextColor(INK[0], INK[1], INK[2]);
-      noteLines.forEach(function (line, i) {
-        pdf.text(line, margin + 9, noteTop + 23.5 + i * 10.5);
-      });
+      drawNotesBox(pdf, margin, gridEnd + 10 + offH, pageW - margin * 2, noteH - 8, noteLines, 9, 10.5);
     }
 
     /* ---- footer: QR, what it is for, legend ---- */
