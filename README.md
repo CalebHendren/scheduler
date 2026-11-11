@@ -8,9 +8,9 @@ Anatomy & Physiology I (AP1) and Anatomy & Physiology II (AP2) — and you can
 Enter your tutors, check the classes each one can tutor, paint their availability, and press
 **Auto-optimize**. You get a Monday–Friday, 7:00 AM–8:30 PM calendar you can print, hand out,
 and post — with a QR code students can scan to book a tutoring appointment. Shifts held somewhere
-other than IMC 270 — **Floating Embedded Tutors** sitting in a class, **Open Labs** in another
-room — are [listed beside the calendar](#embedded-classes-and-open-labs) rather than drawn in
-it. The term runs as [two 7-week halves](#the-two-7-week-halves), each with a week of its own.
+other than IMC 270 — **Library Tutoring** in the library's Boneyard, **Floating Embedded
+Tutors** sitting in a class, **Open Labs** in another room — are [listed beside the
+calendar](#library-tutoring-embedded-classes-and-open-labs) rather than drawn in it. The term runs as [two 7-week halves](#the-two-7-week-halves), each with a week of its own.
 
 **Live version:** https://calebhendren.github.io/scheduler/
 **Offline version:** download `scheduler-local.html` from the
@@ -133,22 +133,39 @@ One **Export JSON** file carries both halves, their dates, and which one was ope
 before the halves loads as the 1st 7 weeks, and the first date in its old free-text
 **Effective dates** becomes the 1st's start.
 
-## Embedded classes and open labs
+## Library tutoring, embedded classes and open labs
 
 Not every hour a tutor works is an hour at the tutoring center, and the two are not
-interchangeable. A shift is one of three things, set under **Where** when you add or edit it:
+interchangeable. A shift is one of four things, set under **Where** when you add or edit it:
 
 - **At the tutoring center** — IMC 270, or whatever **Location** says. This is the main
   calendar, and the only thing coverage means.
+- **Library tutoring** — drop-in tutoring at a second spot, the library's Boneyard.
 - **Floating embedded tutor** — the tutor sits in the class as it is taught, in the classroom.
 - **Open lab** — held in its own room.
 
-The last two ask for a room number (`OMN 286`) and are listed beside the calendar under
-**Floating Embedded Tutors** and **Open Labs**, rather than drawn as blocks. On the handout each
-kind becomes a line under the grid — *Floating Embedded Tutors: Bailey Tue & Thu 12:30–2:00 PM
-(OMN 286)* — the same footnote the old paper schedules carried. Entries are listed the way the
-week reads: by the first day each one runs, then by start time, then by name. The page-2 listing keeps them in with everything
-else, so it stays a complete record.
+The last three ask for a room (`Boneyard`, `OMN 286`) and are listed beside the calendar under
+**Library Tutoring**, **Floating Embedded Tutors** and **Open Labs**, rather than drawn as
+blocks. Entries are listed the way the week reads: by the first day each one runs, then by
+start time, then by name.
+
+Each 7 weeks prints as two pages — the **hall version** and the **admin version**, see
+[Printing and PDFs](#printing-and-pdfs) — and both end in a row of blocks in the same style: a
+navy heading with the room on its right, then a row per entry.
+
+- **The hall version** (the week by class, posted for students) has the QR code to book an
+  appointment, then **Library Boneyard Tutoring** on the left and **Open Lab** on the right.
+  Each block says which classes it is for when that is fewer than all of them — *Anatomy &
+  Physiology only*, worked out from the classes its tutors are checked for. Floating embedded
+  tutors are left off: they help only the class they sit in, and those students already know.
+- **The admin version** (the week by tutor, for the people who run the center) has no QR code.
+  In its place is a **Floating Embedded Tutors** block led by the tutor's name and in name
+  order — *Ellie Mon 3:00–8:30 PM OMN 296*, then her Thursday under it — followed by the same
+  Library Boneyard Tutoring and Open Lab blocks.
+
+When every library shift is in the same room, the room is part of the name (*Library Boneyard
+Tutoring*) rather than said again. The text listing keeps every kind in with everything else,
+so it stays a complete record.
 
 What they change:
 
@@ -308,16 +325,23 @@ it cannot read is reported per row instead of being silently dropped, and times 
 
 ## Printing and PDFs
 
-Two buttons, for two different needs:
+Each 7 weeks prints as two pages, named for who reads them, in this order:
+
+1. **The hall version** — the week read by class (see [Coverage by class](#coverage-by-class)),
+   the one posted in the halls and printed most, so it comes first. The QR code and the library
+   and open lab blocks run along its foot.
+2. **The admin version** — the week read by tutor, a named block per shift, for the people who
+   run the center. The floating embedded tutors, by name, take the QR code's place.
+
+Printed double sided, they are the two faces of one sheet. Neither has a legend: every block
+already says which tutor or class it is. Two buttons print them:
 
 - **Print / Save as PDF** — the one to use for anything you hand out or post. It prints from a
   real HTML table with proper row and column headers, so the PDF Chrome and Edge produce has
-  selectable text, keeps its table structure, and carries a document language. Each 7 weeks is
-  two pages: the calendar, the notes, the QR code and the legend, then **Coverage by class** —
-  printed double sided, one sheet with a calendar on each face.
-- **Download PDF** — one click, no print dialog, drawn directly with jsPDF. Same pages,
-  same layout and real text (nothing is a screenshot), but jsPDF does not emit a
-  tagged structure tree, so it is the convenience option rather than the accessible one.
+  selectable text, keeps its table structure, and carries a document language.
+- **Download PDF** — one click, no print dialog, drawn directly with jsPDF. The same two pages
+  in real text (nothing is a screenshot), but jsPDF does not emit a tagged structure tree, so it
+  is the convenience option rather than the accessible one.
 
 The **Layout** choice beside them turns the pages **Landscape** (the default) or **Portrait**.
 It is saved with the schedule, so it comes back the next time and travels in **Export JSON**.
@@ -339,8 +363,8 @@ name by putting it in the page title while printing, which is what Chrome and Ed
 file name.
 
 Tick **Include text listing** beside the two buttons to add a plain-text listing of every
-shift, in two columns, after each calendar. That makes four pages a half — calendar, listing,
-coverage by class, listing — so a double-sided print gives a sheet with a calendar on one face and the
+shift, in two columns, after each calendar. That makes four pages a half — hall version, listing,
+admin version, listing — so a double-sided print gives a sheet with a calendar on one face and the
 listing on the other, whichever sheet someone picks up. It is off by default.
 
 ### Coverage by class
@@ -359,13 +383,12 @@ across their joined hours — close enough, and never a name cut in half. Otherw
 always stays and the names give way. A gap with nobody in for the class ends the block; the next one starts
 with the class code again.
 
-It is otherwise page 1 exactly: the same header, the same notes, the same band of shifts held
-elsewhere, the same QR block. Only the grid changes, and the legend that decodes it.
+This is the hall version. The admin version shares its header and notes; its grid is read by
+tutor instead, and its foot has the floating embedded tutors where this one has the QR code.
 
 A tutor signed up for three classes covers all three the moment they sit down, so one 9–12
 shift by that tutor is three blocks at 9–12, one per lane. That is the point of the page, not
-double counting: the legend's weekly hours are hours of cover per class, and they can add up to
-more than the center is open.
+double counting: a class's hours of cover can add up to more than the center is open.
 
 Bio is green and Micro is pink. **Anatomy & Physiology I and II share one lane** — anyone
 signed up for II is signed up for I as well, so two lanes would be two columns saying the same
@@ -381,8 +404,8 @@ Both are US Letter, landscape or portrait as **Layout** says. Printing always us
 theme even if you are working in dark mode. The print stylesheet sets a zero `@page` margin and
 insets the handout itself, which is what keeps Chrome and Edge from stamping the document title
 across the top of the page and the page URL across the bottom — there is no CSS switch for those, only the margin they are
-drawn into. Both carry the semester, the location and contact, the QR code, a tutor legend and
-the important notes, plus the plain-text listing when it is turned on.
+drawn into. Both carry the semester, the location and contact and the important notes, plus
+the plain-text listing when it is turned on.
 
 ### What goes on the handout
 
@@ -390,8 +413,12 @@ the important notes, plus the plain-text listing when it is turned on.
 **Schedule settings**. The contact fields start empty — fill them in once and they print on
 every handout, and appear in the app header.
 
-The notes print in a box under the grid — closure dates, the last day of tutoring, anything
-else people need to read off the wall. The default text is the fall 2026 closure schedule; edit
+The notes print in a box — closure dates, the last day of tutoring, anything else people need
+to read off the wall. On a landscape page the box sits in the header, between the title and the
+contact, where it is the first thing read and the space under the grid is left to the shifts
+held elsewhere; the grid takes back some of the height it saved. Notes too long for that spot
+(more than about four lines there), and all notes on a portrait page, print under the grid
+instead. The default text is the fall 2026 closure schedule; edit
 it for your term.
 
 The **Appointment QR code** settings hold the link the code opens — the Slate appointment form

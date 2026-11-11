@@ -7,7 +7,7 @@
    * commit and attaches the single-file build. Semantic versioning -- a new
    * feature is a minor bump, a fix is a patch.
    */
-  var VERSION = '1.5.0';
+  var VERSION = '1.6.0';
 
   var DAY_START_MIN = 7 * 60;      // 7:00 AM
   var SLOT_MINUTES = 30;
@@ -83,9 +83,17 @@
    */
   var SHIFT_KINDS = [
     { key: 'main', label: 'At the tutoring center', short: '', plural: '' },
+    // Drop-in tutoring like the center's, at a second spot on campus -- the
+    // library's "Boneyard" -- so it is listed first, nearest the grid.
+    { key: 'library', label: 'Library tutoring', short: 'Library', plural: 'Library Tutoring',
+      title: 'Library Tutoring', placeholder: 'Boneyard',
+      // A room every entry shares is part of the name: "Library Boneyard
+      // Tutoring", not "Library Tutoring (Boneyard)".
+      roomTitle: 'Library {room} Tutoring', saysClasses: true },
     { key: 'embedded', label: 'Floating embedded tutor', short: 'Embedded',
-      plural: 'Floating Embedded Tutors' },
-    { key: 'lab', label: 'Open lab', short: 'Open lab', plural: 'Open Labs' }
+      plural: 'Floating Embedded Tutors', placeholder: 'OMN 286' },
+    { key: 'lab', label: 'Open lab', short: 'Open lab', plural: 'Open Labs', title: 'Open Lab',
+      placeholder: 'OMN 286', saysClasses: true }
   ];
 
   function shiftKind(key) {
@@ -149,6 +157,111 @@
       return a.days[0] - b.days[0] || a.startSlot - b.startSlot ||
         a.endSlot - b.endSlot || compareNames(name(a.tutorId), name(b.tutorId));
     });
+  }
+
+  /* The band under the handout's grid: one run per kind held away from the
+   * center, in SHIFT_KINDS order, each its entries from groupOffRoom. Two
+   * things keep it from repeating itself, which is most of what makes a
+   * footnote band look cluttered:
+   *
+   *   - where every entry in a run is in the same room, the room is said once,
+   *     beside the heading ("Open Labs (OMN 286):") and not after each entry
+   *     -- or, for a kind whose name takes it, in the name itself ("Library
+   *     Boneyard Tutoring");
+   *   - an entry for the same tutor as the one before it leaves the name off
+   *     (`sameTutor`), so it reads "Caroline Mon 11:00 AM-4:00 PM, Tue & Thu
+   *     12:00-5:00 PM".
+   *
+   * With `tutors`, each run also carries `only`: the classes its tutors
+   * cover, when that is fewer than all of them -- "Anatomy & Physiology only"
+   * -- so a student does not walk to the library for help nobody there gives.
+   */
+  function offRoomRuns(assignments, labels, tutors) {
+    var maskOf = {};
+    (tutors || []).forEach(function (t) { maskOf[t.id] = subjectMask(t.subjects); });
+    var groups = groupOffRoom(assignments, labels);
+    return SHIFT_KINDS.map(function (kind) {
+      if (kind.key === 'main') return null;
+      var entries = groups.filter(function (g) { return g.kind === kind.key; });
+      if (!entries.length) return null;
+      var rooms = entries.map(function (g) { return g.room || ''; });
+      var shared = rooms.every(function (r) { return r && r === rooms[0]; }) ? rooms[0] : '';
+      // A kind whose name takes its room ("Library Boneyard Tutoring") says
+      // the room there and nowhere else.
+      var named = shared && kind.roomTitle ? kind.roomTitle.replace('{room}', shared) : '';
+      return {
+        kind: kind.key,
+        heading: named || kind.plural,
+        title: named || kind.title || kind.plural,
+        room: named ? '' : shared,
+        // Only where anyone may walk in: an embedded tutor helps the one class
+        // they sit in, whatever else they are signed up for.
+        only: tutors && kind.saysClasses ? classesOnlyLabel(entries.reduce(function (m, g) {
+          return m | (maskOf[g.tutorId] || 0);
+        }, 0)) : '',
+        entries: entries.map(function (g, i) {
+          return {
+            tutorId: g.tutorId, days: g.days, startSlot: g.startSlot, endSlot: g.endSlot,
+            room: shared ? '' : (g.room || 'room TBA'),
+            sameTutor: i > 0 && entries[i - 1].tutorId === g.tutorId
+          };
+        })
+      };
+    }).filter(Boolean);
+  }
+
+  /* The blocks along the foot of a handout page, in the order asked for --
+   * the hall version's ['library', 'lab'], the admin version's ['embedded',
+   * 'library', 'lab'] -- each one a heading (title, the room on its right),
+   * the classes a walk-in block is for, and a row per entry. Both outputs
+   * draw from this, so the print view and the download cannot disagree.
+   *
+   * The embedded tutors are read by person: their block is `byName`, its rows
+   * in name order, and a renderer leads each row with the name. The others
+   * read by day, as the grid does. Either way a tutor's name is left off a
+   * row that follows one of their own.
+   */
+  function footerBlocks(assignments, labels, tutors, kinds) {
+    var runs = offRoomRuns(assignments, labels, tutors);
+    var known = {};
+    (tutors || []).forEach(function (t) { known[t.id] = true; });
+    return kinds.map(function (key) {
+      var run = runs.filter(function (r) { return r.kind === key; })[0];
+      if (!run) return null;
+      var byName = key === 'embedded';
+      var entries = run.entries.filter(function (e) { return known[e.tutorId]; });
+      if (byName) {
+        entries.sort(function (a, b) {
+          return compareNames(labels[a.tutorId] || '', labels[b.tutorId] || '') ||
+            a.days[0] - b.days[0] || a.startSlot - b.startSlot;
+        });
+      }
+      var rows = entries.map(function (e, i) {
+        return {
+          name: i > 0 && entries[i - 1].tutorId === e.tutorId ? '' : (labels[e.tutorId] || ''),
+          days: daysLabel(e.days),
+          time: formatRange(e.startSlot, e.endSlot),
+          room: e.room
+        };
+      });
+      return rows.length
+        ? { kind: key, title: run.title, room: run.room, only: run.only, byName: byName, rows: rows }
+        : null;
+    }).filter(Boolean);
+  }
+
+  /* "Anatomy & Physiology only" for a set of classes short of the whole list,
+   * named the way the class page's lanes are (AP1 and AP2 read as one); ''
+   * when it is every class, or none. */
+  function classesOnlyLabel(mask) {
+    var lanes = coverageLanes().filter(function (lane) {
+      return lane.some(function (i) { return mask & SUBJECTS[i].bit; });
+    });
+    if (!lanes.length || lanes.length === coverageLanes().length) return '';
+    var names = lanes.map(laneLabel);
+    var list = names.length < 2 ? names[0]
+      : names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1];
+    return list + ' only';
   }
 
   function compareNames(a, b) {
@@ -1196,6 +1309,9 @@
     roomLabel: roomLabel,
     daysLabel: daysLabel,
     groupOffRoom: groupOffRoom,
+    offRoomRuns: offRoomRuns,
+    classesOnlyLabel: classesOnlyLabel,
+    footerBlocks: footerBlocks,
     compareNames: compareNames,
     sortedNames: sortedNames,
     capRules: capRules,

@@ -957,6 +957,9 @@
       notice(kept.length ? 'Cleared. ' + kept.length + ' locked shift(s) kept.' : 'Schedule cleared.', 'info');
     });
 
+    // Both buttons print the hall version (the week by class) and then the
+    // admin version (the week by tutor). This one prints them from HTML
+    // (printview.js), tagged and accessible.
     $('btn-print').addEventListener('click', function () { root.print(); });
 
     // Save as PDF offers the page title as the file name, so while printing
@@ -971,6 +974,7 @@
       screenTitle = null;
     });
 
+    // The same two pages, hall version first, drawn with jsPDF (pdf.js).
     $('btn-pdf').addEventListener('click', function () {
       try {
         TS.pdf.download(TS.store.state);

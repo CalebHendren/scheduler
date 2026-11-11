@@ -36,6 +36,8 @@
     </div>
 
     <div class="toolbar__group" role="group" aria-label="Print the handout">
+      <!-- Each prints the hall version (week by class), then the admin version
+           (week by tutor): from HTML (printview.js), or drawn with jsPDF (pdf.js). -->
       <button type="button" class="btn" id="btn-print">Print / Save as PDF</button>
       <button type="button" class="btn" id="btn-pdf">Download PDF</button>
       <!-- Outside the settings panel, which is re-rendered from state: these sit
@@ -184,8 +186,9 @@
   </main>
 </div>
 
-<!-- Rendered from the same state, shown only on paper: a real table so the
-     PDF comes out tagged and navigable. -->
+<!-- The hall and admin versions for Print / Save as PDF. Rendered from the
+     same state, shown only on paper: a real table so the PDF comes out tagged
+     and navigable. -->
 <div class="print-only" id="print-view"></div>
 
 <div id="dialog-root"></div>

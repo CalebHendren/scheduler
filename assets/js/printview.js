@@ -6,6 +6,26 @@
   var esc = function (s) { return TS.tutors.esc(s); };
 
   /*
+   * Each 7 weeks prints as two pages, and the center calls them by who reads
+   * them. Both buttons print both, in this order:
+   *
+   *   1. THE HALL VERSION -- the week read by class (BIO, MICRO, AP1&2 lanes),
+   *      posted in the halls for students. Along its foot: the QR code to
+   *      book an appointment, then the Library Boneyard Tutoring and Open Lab
+   *      blocks. No floating embedded tutors -- they only help the class they
+   *      sit in -- and no legend.
+   *   2. THE ADMIN VERSION -- the week read by tutor (a block per shift, named),
+   *      for the people who run the center. Along its foot, where the hall
+   *      version has its QR code: the Floating Embedded Tutors, by name, then
+   *      the same Library Boneyard Tutoring and Open Lab blocks. No legend.
+   *
+   * This file draws them for Print / Save as PDF; pdf.js draws the same two
+   * for Download PDF. A change to one output is wanted in the other.
+   */
+  var HALL_BLOCKS = ['library', 'lab'];
+  var ADMIN_BLOCKS = ['embedded', 'library', 'lab'];
+
+  /*
    * Lane grids per day. The screen view can position blocks freely, but a
    * table needs a fixed number of columns per day and a rowspan per block,
    * which is exactly what makes the exported PDF tagged and navigable.
@@ -161,12 +181,22 @@
     portrait: { width: 739, grid: 600 }     // 8.5 x 11in
   };
   var page = PAGES.landscape;              // set from the schedule on each render
+  /* The budget above was set for a page with a two-line band of shifts held
+   * elsewhere under the grid, the notes box under that, and a legend in the
+   * footer. The hall handout has neither band nor legend now -- the footer is
+   * the QR code and the two "also find tutoring" blocks -- so the grid takes
+   * back that height, less a line for each row a block runs past
+   * SPOT_BASE_ROWS. With the notes up in the header (notesInHead), the height
+   * their box used goes back to it too. Set per 7 weeks, in renderPeriod. */
+  var NOTES_MOVED_PX = 60, BAND_FREED_PX = 34;
+  var SPOT_ROW_PX = 17, SPOT_BASE_ROWS = 3;
+  var gridBonus = 0;
   var GUTTER_PX = 62;      // .pv-time
   var ROW_MIN_PX = 14, ROW_MAX_PX = 34;
 
   function rowPxFor(win) {
     var rows = Math.max(1, win.end - win.start);
-    return Math.max(ROW_MIN_PX, Math.min(ROW_MAX_PX, Math.floor(page.grid / rows)));
+    return Math.max(ROW_MIN_PX, Math.min(ROW_MAX_PX, Math.floor((page.grid + gridBonus) / rows)));
   }
 
   var LABEL_PX = 14;       // .pv-block__name, 9pt at line-height 1.1
@@ -337,40 +367,43 @@
       days, function (run, cls, lanes, rowPx) { return subjectCell(run, labels, cls, lanes, rowPx); });
   }
 
-  function buildSubjectLegend(runs) {
-    if (!runs.length) return '';
-    var totals = U.coverageLaneHours(runs);
-    var items = U.coverageLanes().map(function (lane, i) {
-      var colors = U.laneColors(lane, false);
-      return '<li><span class="pv-swatch" style="background:' + colors.bg +
-        ';border-left:5px solid ' + colors.bar + '"></span>' +
-        esc(U.laneLabel(lane)) + ' <span class="pv-legend__subjects">' +
-        esc(U.hoursLabel(totals[i])) + ' a week</span></li>';
-    }).join('');
-    return '<section class="pv-legend"><h2>Classes</h2><ul>' + items + '</ul></section>';
+  /* ---- the blocks along the foot ----
+   * The other places a student can find a tutor, each a box of its own that
+   * reads from across a hallway rather than a footnote: library tutoring and
+   * the open lab on both versions, and on the admin version the floating
+   * embedded tutors first, read by name (U.footerBlocks).
+   */
+  function blockRow(block, r) {
+    var room = r.room ? ' <span class="pv-spot__where">(' + esc(r.room) + ')</span>' : '';
+    if (block.byName) {
+      return '<tr><th scope="row">' + esc(r.name) + '</th>' +
+        '<td class="pv-nowrap">' + esc(r.days) + '</td>' +
+        '<td class="pv-nowrap">' + esc(r.time) + '</td>' +
+        '<td class="pv-spot__where">' + esc(r.room) + '</td></tr>';
+    }
+    return '<tr><th scope="row">' + esc(r.days) + '</th>' +
+      '<td class="pv-nowrap">' + esc(r.time) + '</td>' +
+      '<td>' + esc(r.name) + room + '</td></tr>';
   }
 
-  function buildOffRoom(state, labels) {
-    var groups = U.groupOffRoom(state.assignments, labels);
-    if (!groups.length) return '';
-
-    var runs = U.SHIFT_KINDS.map(function (kind) {
-      if (kind.key === 'main') return '';
-      var items = groups.filter(function (g) { return g.kind === kind.key; })
-        .map(function (g) {
-          var tutor = TS.store.getTutor(g.tutorId);
-          if (!tutor) return '';
-          return '<li><strong>' + esc(labels[tutor.id]) + '</strong> ' +
-            esc(U.daysLabel(g.days)) + ' ' +
-            esc(U.formatRange(g.startSlot, g.endSlot)) +
-            ' (' + esc(g.room || 'room TBA') + ')</li>';
-        }).join('');
-      if (!items) return '';
-      return '<div class="pv-offroom__run"><h2>' + esc(kind.plural) + '</h2>' +
-        '<ul>' + items + '</ul></div>';
+  function buildBlocks(state, labels, kinds) {
+    return U.footerBlocks(state.assignments, labels, state.tutors, kinds).map(function (block) {
+      return '<section class="pv-spot pv-spot--' + block.kind + '">' +
+        '<h2><span>' + esc(block.title) + '</span>' +
+          (block.room ? '<span class="pv-spot__room">' + esc(block.room) + '</span>' : '') + '</h2>' +
+        (block.only ? '<p class="pv-spot__only">' + esc(block.only) + '</p>' : '') +
+        '<table class="pv-spot__list' + (block.byName ? ' pv-spot__list--names' : '') + '"><tbody>' +
+          block.rows.map(function (r) { return blockRow(block, r); }).join('') +
+        '</tbody></table>' +
+        '</section>';
     }).join('');
+  }
 
-    return '<section class="pv-offroom">' + runs + '</section>';
+  // The most rows any block on the page runs to.
+  function blockRows(state, labels, kinds) {
+    return U.footerBlocks(state.assignments, labels, state.tutors, kinds).reduce(function (most, b) {
+      return Math.max(most, b.rows.length + (b.only ? 1 : 0));
+    }, 0);
   }
 
   function buildListing(state, labels) {
@@ -407,25 +440,28 @@
     return html + '</section>';
   }
 
-  function buildLegend(state, labels) {
-    if (!state.tutors.length) return '';
-    var items = state.tutors.map(function (t) {
-      var colors = U.blockColors(t.colorIndex, false);
-      var shorts = U.maskToShort(U.subjectMask(t.subjects));
-      return '<li><span class="pv-swatch" style="background:' + colors.bg +
-        ';border-left:5px solid ' + colors.bar + '"></span>' +
-        esc(labels[t.id]) + ' <span class="pv-legend__subjects">' +
-        esc(shorts.join(' · ') || '—') + '</span></li>';
-    }).join('');
-    return '<section class="pv-legend"><h2>Tutors</h2><ul>' + items + '</ul></section>';
-  }
-
   /* ---- page furniture ----
    * The coverage page is page one over again, differing only in which grid it
    * carries and which legend decodes it, so everything either page would
    * otherwise repeat is built here and handed to both.
    */
-  function buildHead(state) {
+  /* The important notes go where they fit best. On a landscape sheet the
+   * header has a wide empty stretch between the title and the contact, and a
+   * short notice there is the first thing read and costs the grid nothing; the
+   * space under the grid is then left to tutoring held elsewhere. A notice too
+   * long for that stretch -- and every notice on a portrait sheet, where the
+   * stretch is too narrow -- goes in its box under the grid, as before. */
+  var HEAD_NOTE_PT = 8.5, HEAD_NOTE_LINES = 4;
+  var HEAD_TITLE_PX = 330, HEAD_CONTACT_PX = 215; // what the two ends of the header take
+
+  function notesInHead(state) {
+    var notes = state.settings.notes;
+    if (!notes || page !== PAGES.landscape) return false;
+    var width = page.width - HEAD_TITLE_PX - HEAD_CONTACT_PX - 16; // less the box's padding
+    return nameLinesNeeded(notes, width, HEAD_NOTE_PT) <= HEAD_NOTE_LINES;
+  }
+
+  function buildHead(state, notesHere) {
     var s = state.settings;
     // Which 7 weeks this is, beside the semester: the two halves' handouts
     // look alike, and one posted for the wrong half is easy to miss.
@@ -438,6 +474,7 @@
         (s.effective ? '<p class="pv-subtitle">' + esc(s.effective) + '</p>' : '') +
         '<p class="pv-where">' + esc(s.location) + '</p>' +
       '</div>' +
+      (notesHere ? buildNotes(state, true) : '') +
       (s.contactName || s.contactEmail
         ? '<div class="pv-head__contact"><p>' +
             (s.contactName ? '<strong>' + esc(s.contactName) + '</strong>' : '') +
@@ -447,52 +484,65 @@
       '</header>';
   }
 
-  function buildNotes(state) {
+  function buildNotes(state, inHead) {
     var notes = state.settings.notes;
     if (!notes) return '';
-    return '<section class="pv-notes"><h2>Important notes</h2><p>' +
-      esc(notes) + '</p></section>';
+    return '<section class="pv-notes' + (inHead ? ' pv-notes--head' : '') +
+      '"><h2>Important notes</h2><p>' + esc(notes) + '</p></section>';
   }
 
-  function buildFoot(state, legendHtml) {
+  // The hall version leads with the QR code; the admin version has none.
+  function buildFoot(state, blocksHtml, withQr) {
     var s = state.settings;
     // The link itself is left off the page: it is long and carries an id
     // nobody would type, so the code is what gets used.
-    var qrSvg = TS.qr.toSvg(s.qrUrl, { label: 'QR code: ' + (s.qrHeading || s.qrUrl) });
-    return '<div class="pv-foot">' +
-      '<div class="pv-qr">' + qrSvg + '</div>' +
-      '<div class="pv-qr__text">' +
-        (s.qrHeading ? '<p><strong>' + esc(s.qrHeading) + '</strong></p>' : '') +
-        (s.qrCaption ? '<p>' + esc(s.qrCaption) + '</p>' : '') +
-      '</div>' +
-      legendHtml +
-      '</div>';
+    var qr = withQr
+      ? '<div class="pv-qr">' + TS.qr.toSvg(s.qrUrl, { label: 'QR code: ' + (s.qrHeading || s.qrUrl) }) + '</div>' +
+        '<div class="pv-qr__text">' +
+          (s.qrHeading ? '<p><strong>' + esc(s.qrHeading) + '</strong></p>' : '') +
+          (s.qrCaption ? '<p>' + esc(s.qrCaption) + '</p>' : '') +
+        '</div>'
+      : '';
+    if (!qr && !blocksHtml) return '';
+    return '<div class="pv-foot">' + qr + blocksHtml + '</div>';
   }
 
-  /* A whole handout page: the furniture wrapped round one grid and the legend
-   * that decodes that grid's colours. */
-  function buildHandout(state, labels, tableHtml, legendHtml) {
-    return buildHead(state) +
+  /* A whole handout page: the furniture wrapped round one grid and the
+   * blocks along its foot. No legend: every block in the grid already
+   * carries its tutor's name or its class's code. */
+  function buildHandout(state, labels, tableHtml, hall) {
+    var notesHere = notesInHead(state);
+    return buildHead(state, notesHere) +
       tableHtml +
-      buildOffRoom(state, labels) +
-      buildNotes(state) +
-      buildFoot(state, legendHtml);
+      (notesHere ? '' : buildNotes(state, false)) +
+      buildFoot(state, buildBlocks(state, labels, hall ? HALL_BLOCKS : ADMIN_BLOCKS), hall);
   }
 
-  /* One half's pages. Printed double sided, the two calendars are the two
-   * faces of one sheet. With the listing on, it follows each calendar instead,
-   * so each sheet carries a calendar on one face and the listing on the other.
+  // The grid's share of the page, worked out before the grid is built: see
+  // NOTES_MOVED_PX.
+  function setGridBonus(view, labels, kinds) {
+    gridBonus = (notesInHead(view) ? NOTES_MOVED_PX : 0) + BAND_FREED_PX -
+      Math.max(0, blockRows(view, labels, kinds) - SPOT_BASE_ROWS) * SPOT_ROW_PX;
+  }
+
+  /* One half's pages: the hall version, then the admin version -- the hall
+   * version is the one printed most, so it comes first. Printed double sided,
+   * the two are the two faces of one sheet. With the listing on, it follows
+   * each calendar instead, so each sheet carries a calendar on one face and
+   * the listing on the other.
    */
   function renderPeriod(view) {
     var labels = U.displayNames(view.tutors);
     var runs = U.coverageRuns(view.assignments, view.tutors);
     var listing = view.settings.includeListing ? buildListing(view, labels) : '';
+    setGridBonus(view, labels, HALL_BLOCKS);
+    var hall = buildHandout(view, labels, buildSubjectTable(view, labels, runs), true);
+    setGridBonus(view, labels, ADMIN_BLOCKS);
+    var admin = buildHandout(view, labels, buildTable(view, labels), false);
     return '<section class="pv-period">' +
-      buildHandout(view, labels, buildTable(view, labels), buildLegend(view, labels)) +
+      '<section class="pv-hall">' + hall + '</section>' +
       listing +
-      '<section class="pv-coverage">' +
-        buildHandout(view, labels, buildSubjectTable(view, labels, runs), buildSubjectLegend(runs)) +
-      '</section>' +
+      '<section class="pv-admin">' + admin + '</section>' +
       listing +
       '</section>';
   }
@@ -517,6 +567,7 @@
   // choice asks for.
   function render(container, state) {
     setPage(state.settings.orientation);
+    container.classList.toggle('pv-portrait', page === PAGES.portrait);
     container.innerHTML = TS.store.printViews().map(renderPeriod).join('');
   }
 

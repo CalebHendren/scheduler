@@ -1018,6 +1018,61 @@
     r.eq(ordered.map(function (g) { return g.tutorId; }).join(','), 'cal,bea,amy,zoe,zoe',
       'floating tutors are listed by day, then time, then name');
     r.eq(U.daysLabel([0, 2, 4]), 'Mon, Wed & Fri', 'three days read as a list');
+
+    /* The band under the handout's grid: library tutoring first, a room the
+     * whole run shares said once, and a tutor's name not repeated. */
+    var runs = U.offRoomRuns([
+      { id: 'b1', tutorId: 'car', day: 0, startSlot: 8, endSlot: 18, kind: 'library', room: 'Boneyard' },
+      { id: 'b2', tutorId: 'car', day: 1, startSlot: 10, endSlot: 20, kind: 'library', room: 'Boneyard' },
+      { id: 'b3', tutorId: 'car', day: 3, startSlot: 10, endSlot: 20, kind: 'library', room: 'Boneyard' },
+      { id: 'b4', tutorId: 'car', day: 4, startSlot: 4, endSlot: 14, kind: 'lab', room: 'OMN 286' },
+      { id: 'b5', tutorId: 'ell', day: 0, startSlot: 16, endSlot: 27, kind: 'embedded', room: 'OMN 296' },
+      { id: 'b6', tutorId: 'bai', day: 1, startSlot: 8, endSlot: 14, kind: 'embedded', room: 'OMN 286' }
+    ], { car: 'Caroline', ell: 'Ellie', bai: 'Bailey' });
+    r.eq(runs.map(function (run) { return run.kind; }).join(','), 'library,embedded,lab',
+      'library tutoring is listed first, nearest the grid');
+    r.eq(runs[0].title, 'Library Boneyard Tutoring', 'the library room is part of its name');
+    r.eq(runs[0].room, '', 'and is not said again beside it');
+    r.eq(runs[2].heading, 'Open Labs', 'a lab keeps its own name');
+    r.eq(runs[2].room, 'OMN 286', 'with a room every entry shares beside the heading');
+    r.eq(runs[0].entries.map(function (e) { return e.room; }).join(''), '',
+      'and not after each entry');
+    r.eq(runs[0].entries.length, 2, 'Tuesday and Thursday at the same time are one entry');
+    r.ok(!runs[0].entries[0].sameTutor && runs[0].entries[1].sameTutor,
+      'a tutor listed twice in a row is named once');
+    r.eq(runs[1].room, '', 'rooms that differ stay with their entries');
+    r.eq(runs[1].entries[0].room, 'OMN 296', 'each one saying its own');
+    var only = U.offRoomRuns([
+      { id: 'c1', tutorId: 'car', day: 4, startSlot: 4, endSlot: 14, kind: 'lab', room: 'OMN 286' }
+    ], { car: 'Caroline' }, [{ id: 'car', subjects: { ap1: true, ap2: true } }]);
+    r.eq(only[0].only, 'Anatomy & Physiology only',
+      'a lab run by A&P tutors says it is for A&P only, the pair read as one');
+    var foot = U.footerBlocks([
+      { id: 'f1', tutorId: 'ell', day: 0, startSlot: 16, endSlot: 27, kind: 'embedded', room: 'OMN 296' },
+      { id: 'f2', tutorId: 'bai', day: 1, startSlot: 8, endSlot: 14, kind: 'embedded', room: 'OMN 286' },
+      { id: 'f3', tutorId: 'ell', day: 3, startSlot: 21, endSlot: 27, kind: 'embedded', room: 'OMN 286' },
+      { id: 'f4', tutorId: 'car', day: 4, startSlot: 4, endSlot: 14, kind: 'lab', room: 'OMN 286' }
+    ], { ell: 'Ellie', bai: 'Bailey', car: 'Caroline' }, [
+      { id: 'ell', subjects: { ap1: true } }, { id: 'bai', subjects: { bio: true } },
+      { id: 'car', subjects: { ap1: true, ap2: true } }
+    ], ['embedded', 'library', 'lab']);
+    r.eq(foot.map(function (b) { return b.kind; }).join(','), 'embedded,lab',
+      'the admin foot runs embedded tutors, then the library and lab, skipping what is empty');
+    r.eq(foot[0].rows.map(function (row) { return row.name; }).join(','), 'Bailey,Ellie,',
+      'embedded tutors are read by name, a tutor named once');
+    r.ok(foot[0].byName && !foot[1].byName, 'only the embedded block leads with the name');
+    r.eq(U.footerBlocks([], {}, [], ['library', 'lab']).length, 0, 'nothing held elsewhere, no blocks');
+
+    var embeddedOnly = U.offRoomRuns([
+      { id: 'c2', tutorId: 'bai', day: 1, startSlot: 8, endSlot: 14, kind: 'embedded', room: 'OMN 286' }
+    ], { bai: 'Bailey' }, [{ id: 'bai', subjects: { bio: true, ap1: true } }]);
+    r.eq(embeddedOnly[0].only, '', 'an embedded tutor has no classes note: they help the class they sit in');
+    r.eq(U.classesOnlyLabel(U.subjectMask({ bio: true, micro: true, ap1: true, ap2: true })), '',
+      'every class is not a restriction worth printing');
+    r.eq(U.classesOnlyLabel(U.subjectMask({ bio: true, ap1: true })),
+      'Biology & Anatomy & Physiology only', 'two classes are named together');
+    r.eq(TS.store.normalizeAssignment({ tutorId: 't', kind: 'library', room: ' Boneyard ' }).room,
+      'Boneyard', 'library tutoring keeps its kind and room');
   }
 
   function testPeriods(r) {
